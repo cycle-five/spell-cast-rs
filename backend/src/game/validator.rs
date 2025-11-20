@@ -16,7 +16,7 @@ impl WordValidator {
     }
 
     /// Validate that positions form a valid path on the grid
-    pub fn is_valid_path(&self, grid: &Grid, positions: &[Position]) -> bool {
+    pub fn is_valid_path(&self, _grid: &Grid, positions: &[Position]) -> bool {
         if positions.is_empty() {
             return false;
         }

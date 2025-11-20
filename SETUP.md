@@ -19,6 +19,13 @@ This guide will help you set up the Spell Cast Discord Activity for local develo
    sudo apt install postgresql postgresql-contrib
    sudo systemctl start postgresql
 
+   # Arch Linux
+   sudo pacman -S postgresql
+   sudo systemctl start postgresql
+
+   # Docker
+   docker run --name spellcast-db -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres:14
+
    # Windows
    # Download from https://www.postgresql.org/download/windows/
    ```
@@ -39,16 +46,12 @@ This guide will help you set up the Spell Cast Discord Activity for local develo
 
 1. Create the database:
    ```bash
-   createdb spellcast
+   $ export DATABASE_URL=postgresql://postgres:password@localhost:5432/spellcast 
    ```
 
-2. If you need to set a password:
+2. Run setup:
    ```bash
-   psql postgres
-   CREATE DATABASE spellcast;
-   CREATE USER spellcast_user WITH PASSWORD 'your_password';
-   GRANT ALL PRIVILEGES ON DATABASE spellcast TO spellcast_user;
-   \q
+   $ sqlx database setup
    ```
 
 ## Step 2: Discord Application Setup
@@ -89,6 +92,11 @@ This guide will help you set up the Spell Cast Discord Activity for local develo
    DISCORD_CLIENT_ID=your_client_id_from_step_2
    DISCORD_CLIENT_SECRET=your_client_secret_from_step_2
    JWT_SECRET=generate_a_random_secret_here
+   ```
+
+   You can generate a secure JWT secret using Python:
+   ```bash
+   python3 -c "import secrets; print(secrets.token_hex(32))"
    ```
 
 4. Run database migrations:

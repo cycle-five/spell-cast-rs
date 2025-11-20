@@ -8,10 +8,7 @@ mod utils;
 mod websocket;
 
 use anyhow::Result;
-use axum::{
-    routing::get,
-    Router,
-};
+use axum::{routing::get, Router};
 use dashmap::DashMap;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -59,17 +56,11 @@ async fn main() -> Result<()> {
     tracing::info!("Configuration loaded");
 
     // Connect to database
-    let db = db::create_pool(
-        config.database_url(),
-        config.database.max_connections,
-    )
-    .await?;
+    let db = db::create_pool(config.database_url(), config.database.max_connections).await?;
     tracing::info!("Connected to database");
 
     // Run migrations
-    sqlx::migrate!("./migrations")
-        .run(&db)
-        .await?;
+    sqlx::migrate!("./migrations").run(&db).await?;
     tracing::info!("Database migrations completed");
 
     // Load dictionary
@@ -79,8 +70,14 @@ async fn main() -> Result<()> {
             dict
         }
         Err(e) => {
-            tracing::warn!("Failed to load dictionary: {}. Using empty dictionary for now.", e);
-            tracing::warn!("Download a word list to {} for full functionality", config.game.dictionary_path);
+            tracing::warn!(
+                "Failed to load dictionary: {}. Using empty dictionary for now.",
+                e
+            );
+            tracing::warn!(
+                "Download a word list to {} for full functionality",
+                config.game.dictionary_path
+            );
             Dictionary::empty()
         }
     };
@@ -104,9 +101,9 @@ async fn main() -> Result<()> {
         // WebSocket endpoint
         .route("/ws", get(websocket::handle_websocket))
         // API routes
-        .merge(routes::create_routes(state.clone()))
+        .merge(routes::create_routes())
         // Serve frontend static files
-        .nest_service("/", ServeDir::new("../frontend"))
+        .nest_service("/play", ServeDir::new("../frontend"))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -115,9 +112,10 @@ async fn main() -> Result<()> {
     let addr = config.server_addr();
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
-    tracing::info!("🚀 Server listening on {}", addr);
-    tracing::info!("📝 WebSocket endpoint: ws://{}/ws", addr);
-    tracing::info!("🏥 Health check: http://{}/health", addr);
+    tracing::info!("Server listening on {}", addr);
+    tracing::info!("WebSocket endpoint: ws://{}/ws", addr);
+    tracing::info!("Health check: http://{}/health", addr);
+    tracing::info!("Game frontend: http://{}/play", addr);
 
     axum::serve(listener, app).await?;
 

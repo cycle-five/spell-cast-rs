@@ -7,7 +7,7 @@ pub struct GridGenerator;
 impl GridGenerator {
     /// Generate a new 5x5 grid with weighted letter distribution
     pub fn generate() -> Grid {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let cumulative_dist = get_cumulative_distribution();
         let total = cumulative_dist.last().unwrap().1;
 
@@ -32,12 +32,8 @@ impl GridGenerator {
         grid
     }
 
-    fn random_letter(
-        cumulative_dist: &[(char, f32)],
-        total: f32,
-        rng: &mut impl Rng,
-    ) -> char {
-        let random_value = rng.gen::<f32>() * total;
+    fn random_letter(cumulative_dist: &[(char, f32)], total: f32, rng: &mut impl Rng) -> char {
+        let random_value = rng.random::<f32>() * total;
 
         for (letter, cumulative) in cumulative_dist {
             if random_value <= *cumulative {
@@ -50,20 +46,20 @@ impl GridGenerator {
 
     fn add_multipliers(grid: &mut Grid, rng: &mut impl Rng) {
         // Add 3-5 double letter multipliers
-        let dl_count = rng.gen_range(3..=5);
+        let dl_count = rng.random_range(3..=5);
         for _ in 0..dl_count {
-            let row = rng.gen_range(0..5);
-            let col = rng.gen_range(0..5);
+            let row = rng.random_range(0..5);
+            let col = rng.random_range(0..5);
             if grid[row][col].multiplier.is_none() {
                 grid[row][col].multiplier = Some(Multiplier::DoubleLetter);
             }
         }
 
         // Add 2-3 triple letter multipliers
-        let tl_count = rng.gen_range(2..=3);
+        let tl_count = rng.random_range(2..=3);
         for _ in 0..tl_count {
-            let row = rng.gen_range(0..5);
-            let col = rng.gen_range(0..5);
+            let row = rng.random_range(0..5);
+            let col = rng.random_range(0..5);
             if grid[row][col].multiplier.is_none() {
                 grid[row][col].multiplier = Some(Multiplier::TripleLetter);
             }

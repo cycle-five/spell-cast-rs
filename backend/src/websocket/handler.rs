@@ -1,3 +1,7 @@
+use crate::{
+    websocket::messages::{ClientMessage, ServerMessage},
+    AppState,
+};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -8,7 +12,6 @@ use axum::{
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use crate::{AppState, websocket::messages::{ClientMessage, ServerMessage}};
 
 /// WebSocket upgrade handler
 pub async fn handle_websocket(
@@ -28,7 +31,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         while let Some(msg) = rx.recv().await {
             match serde_json::to_string(&msg) {
                 Ok(json) => {
-                    if sender.send(Message::Text(json)).await.is_err() {
+                    if sender.send(Message::Text(json.into())).await.is_err() {
                         break;
                     }
                 }
@@ -43,26 +46,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
-                Message::Text(text) => {
-                    match serde_json::from_str::<ClientMessage>(&text) {
-                        Ok(client_msg) => {
-                            if let Err(e) = handle_client_message(client_msg, &state, &tx).await {
-                                tracing::error!("Error handling message: {}", e);
-                                let error_msg = ServerMessage::Error {
-                                    message: e.to_string(),
-                                };
-                                let _ = tx.send(error_msg).await;
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to parse message: {}", e);
+                Message::Text(text) => match serde_json::from_str::<ClientMessage>(&text) {
+                    Ok(client_msg) => {
+                        if let Err(e) = handle_client_message(client_msg, &state, &tx).await {
+                            tracing::error!("Error handling message: {}", e);
                             let error_msg = ServerMessage::Error {
-                                message: format!("Invalid message format: {}", e),
+                                message: e.to_string(),
                             };
                             let _ = tx.send(error_msg).await;
                         }
                     }
-                }
+                    Err(e) => {
+                        tracing::error!("Failed to parse message: {}", e);
+                        let error_msg = ServerMessage::Error {
+                            message: format!("Invalid message format: {}", e),
+                        };
+                        let _ = tx.send(error_msg).await;
+                    }
+                },
                 Message::Close(_) => {
                     tracing::info!("Client disconnected");
                     break;
@@ -86,7 +87,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 /// Handle individual client messages
 async fn handle_client_message(
     msg: ClientMessage,
-    state: &AppState,
+    _state: &AppState,
     tx: &mpsc::Sender<ServerMessage>,
 ) -> anyhow::Result<()> {
     match msg {
@@ -109,7 +110,7 @@ async fn handle_client_message(
             // TODO: Implement start game logic
         }
         ClientMessage::SubmitWord { word, positions } => {
-            tracing::info!("Submitting word: {}", word);
+            tracing::info!("Submitting word: {} at positions: {:?}", word, positions);
             // TODO: Implement word submission logic
         }
         ClientMessage::PassTurn => {

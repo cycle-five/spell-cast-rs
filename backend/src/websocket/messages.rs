@@ -1,6 +1,5 @@
+use crate::models::{GameMode, GridCell, Position};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use crate::models::{Position, GridCell, GameMode};
 
 /// Messages sent from client to server
 #[derive(Debug, Clone, Serialize, Deserialize)]

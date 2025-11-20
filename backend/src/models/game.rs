@@ -72,7 +72,7 @@ pub struct GameMove {
     pub timestamp: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct Position {
     pub row: usize,
     pub col: usize,

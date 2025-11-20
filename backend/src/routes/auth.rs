@@ -1,11 +1,7 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
+use crate::AppState;
+use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct CodeExchangeRequest {
@@ -33,8 +29,8 @@ pub struct UserResponse {
 
 /// Exchange Discord authorization code for access token
 pub async fn exchange_code(
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<CodeExchangeRequest>,
+    State(_state): State<Arc<AppState>>,
+    Json(_payload): Json<CodeExchangeRequest>,
 ) -> Result<Json<TokenResponse>, StatusCode> {
     // TODO: Implement OAuth2 code exchange with Discord
     // For now, return a placeholder
@@ -47,7 +43,7 @@ pub async fn exchange_code(
 
 /// Get current user info from Discord
 pub async fn get_current_user(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     // TODO: Extract bearer token from headers
 ) -> Result<Json<UserResponse>, StatusCode> {
     // TODO: Implement user info retrieval from Discord API
