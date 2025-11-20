@@ -1,0 +1,39 @@
+# Rust
+/target/
+/backend/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# Environment variables
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.parcel-cache/
+frontend/package-lock.json
+frontend/yarn.lock
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+backend/spell-cast-backend
+
+# Dictionary (large file, download separately)
+backend/dictionary.txt

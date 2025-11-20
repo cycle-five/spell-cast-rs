@@ -1,0 +1,134 @@
+/* Game Board / Grid Styles */
+
+.game-board {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(5, 1fr);
+  gap: 8px;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px var(--shadow);
+  max-width: 500px;
+  max-height: 500px;
+  aspect-ratio: 1;
+}
+
+.tile {
+  position: relative;
+  background: var(--surface-light);
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 150ms ease;
+  user-select: none;
+  min-height: 60px;
+}
+
+.tile:hover {
+  background: #3F4247;
+  transform: scale(1.05);
+  border-color: var(--text-secondary);
+}
+
+.tile.selected {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  transform: scale(1.1);
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(88, 101, 242, 0.4);
+}
+
+.tile.selected .letter {
+  color: white;
+}
+
+.tile .letter {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tile .value {
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.tile .multiplier {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.tile.DL .multiplier {
+  background: #3BA55D;
+  color: white;
+}
+
+.tile.TL .multiplier {
+  background: #ED4245;
+  color: white;
+}
+
+.tile.DL {
+  border-color: #3BA55D;
+}
+
+.tile.TL {
+  border-color: #ED4245;
+}
+
+/* Selection Path Animation */
+.tile.selected::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: white;
+  border-radius: 50%;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.5);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .game-board {
+    max-width: 90vw;
+    max-height: 90vw;
+    gap: 6px;
+    padding: 12px;
+  }
+
+  .tile {
+    min-height: 50px;
+  }
+
+  .tile .letter {
+    font-size: 1.5rem;
+  }
+
+  .tile .value {
+    font-size: 0.6rem;
+  }
+}
