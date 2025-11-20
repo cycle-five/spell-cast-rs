@@ -35,7 +35,11 @@ impl WordValidator {
         }
 
         // Check that all positions are within bounds
-        positions.iter().all(|pos| pos.row < 5 && pos.col < 5)
+        positions.iter().all(|pos| {
+            let num_rows = _grid.len();
+            let num_cols = if num_rows > 0 { _grid[0].len() } else { 0 };
+            pos.row < num_rows && pos.col < num_cols
+        })
     }
 
     /// Check if two positions are adjacent (including diagonals)
