@@ -36,6 +36,8 @@ struct DiscordTokenResponse {
     access_token: String,
     token_type: String,
     expires_in: i64,
+    /// Currently unused; not stored because token refresh functionality is not yet implemented.
+    /// When implementing token refresh, store this in the database.
     refresh_token: String,
     scope: String,
 }
