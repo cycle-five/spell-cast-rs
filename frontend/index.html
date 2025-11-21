@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spell Cast</title>
+  <link rel="stylesheet" href="/styles/main.css">
+  <link rel="stylesheet" href="/styles/grid.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="screen active">
+      <div class="loading-content">
+        <h1 class="title">✨ Spell Cast ✨</h1>
+        <p class="subtitle">Connecting to Discord...</p>
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+    <!-- Lobby Screen -->
+    <div id="lobby-screen" class="screen">
+      <div class="lobby-container">
+        <h1 class="title">Spell Cast</h1>
+        <p class="subtitle">Create a word game to play with friends!</p>
+
+        <div class="game-modes">
+          <button class="mode-button" data-mode="multiplayer">
+            <h3>New Game</h3>
+            <p>Compete with 2-6 players</p>
+          </button>
+          <button class="mode-button" data-mode="2v2">
+            <h3>2v2 Mode</h3>
+            <p>Team up with a friend</p>
+          </button>
+          <button class="mode-button" data-mode="adventure">
+            <h3>Adventure</h3>
+            <p>Solo vs AI (50 levels)</p>
+          </button>
+        </div>
+
+        <div id="lobby-players" class="players-list">
+          <h3>Players</h3>
+          <div id="players-container"></div>
+        </div>
+
+        <button id="start-game-btn" class="primary-button hidden">Start Game</button>
+      </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="screen">
+      <div class="game-container">
+        <!-- Header -->
+        <div class="game-header">
+          <div class="round-info">
+            <span id="current-round">Round 1</span> / <span id="max-rounds">5</span>
+          </div>
+          <div id="timer-display" class="timer hidden">30s</div>
+          <div id="turn-indicator" class="turn-indicator">Your Turn!</div>
+        </div>
+
+        <!-- Scoreboard -->
+        <div class="scoreboard">
+          <div id="player-scores" class="player-scores"></div>
+        </div>
+
+        <!-- Game Board -->
+        <div class="game-board-wrapper">
+          <div id="game-board" class="game-board"></div>
+        </div>
+
+        <!-- Current Word Display -->
+        <div class="word-display">
+          <div id="current-word" class="current-word"></div>
+          <div id="word-score" class="word-score">0 pts</div>
+        </div>
+
+        <!-- Controls -->
+        <div class="game-controls">
+          <button id="clear-btn" class="control-button">Clear</button>
+          <button id="submit-btn" class="control-button primary">Submit</button>
+          <button id="pass-btn" class="control-button secondary">Pass Turn</button>
+        </div>
+
+        <!-- Used Words -->
+        <div class="used-words">
+          <h4>Words Played</h4>
+          <ul id="used-words-list"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Screen -->
+    <div id="results-screen" class="screen">
+      <div class="results-container">
+        <h1 class="title">Game Over!</h1>
+        <div id="winner-announcement"></div>
+        <div id="final-scores" class="final-scores"></div>
+        <button id="play-again-btn" class="primary-button">Play Again</button>
+      </div>
+    </div>
+
+    <!-- Error Display -->
+    <div id="error-toast" class="error-toast hidden"></div>
+  </div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
