@@ -4,9 +4,16 @@ let discordSdk = null;
 
 export async function initDiscord() {
   // Get client ID from environment or config
-  const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID || 'YOUR_CLIENT_ID';
+  const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID;
+  if (!clientId) {
+    if (import.meta.env.DEV) {
+      console.warn('VITE_DISCORD_CLIENT_ID is not set. Using mock client ID in development mode.');
+    } else {
+      throw new Error('Discord client ID is missing. Please set VITE_DISCORD_CLIENT_ID in your environment.');
+    }
+  }
 
-  discordSdk = new DiscordSDK(clientId);
+  discordSdk = new DiscordSDK(clientId || 'YOUR_CLIENT_ID');
 
   try {
     // Wait for Discord to be ready
