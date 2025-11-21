@@ -32,11 +32,39 @@ pub struct UserResponse {
 const TEST_USER_ID: i64 = 12345;
 const TEST_USERNAME: &str = "test_user";
 
+/// Validate Discord authorization code for security
+fn validate_auth_code(code: &str) -> Result<(), &'static str> {
+    // Check if code is empty
+    if code.is_empty() {
+        return Err("Authorization code cannot be empty");
+    }
+
+    // Check reasonable length (Discord codes are typically 30-40 characters)
+    // Allow some flexibility but prevent extremely long inputs
+    if code.len() < 10 || code.len() > 100 {
+        return Err("Authorization code has invalid length");
+    }
+
+    // Check that code contains only valid characters
+    // Discord codes are alphanumeric with possible hyphens and underscores
+    if !code.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        return Err("Authorization code contains invalid characters");
+    }
+
+    Ok(())
+}
+
 /// Exchange Discord authorization code for access token
 pub async fn exchange_code(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CodeExchangeRequest>,
 ) -> Result<Json<TokenResponse>, StatusCode> {
+    // Validate the authorization code
+    if let Err(_) = validate_auth_code(&payload.code) {
+        tracing::warn!("Invalid authorization code received");
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     // TODO: Implement OAuth2 code exchange with Discord
     // For now, create a test token with placeholder user data
     tracing::warn!(
