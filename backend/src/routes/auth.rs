@@ -55,8 +55,8 @@ pub async fn exchange_code(
     Json(payload): Json<CodeExchangeRequest>,
 ) -> Result<Json<TokenResponse>, StatusCode> {
     // Validate the authorization code
-    if let Err(e) = validate_auth_code(&payload.code) {
-        tracing::warn!("Invalid authorization code: {}", e);
+    if let Err(_) = validate_auth_code(&payload.code) {
+        tracing::warn!("Invalid authorization code received");
         return Err(StatusCode::BAD_REQUEST);
     }
 
