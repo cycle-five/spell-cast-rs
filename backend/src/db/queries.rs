@@ -44,7 +44,7 @@ pub async fn create_game(pool: &PgPool, game: &Game) -> Result<Game> {
         RETURNING *
         "#
     )
-    .bind(&game.game_id)
+    .bind(game.game_id)
     .bind(game.guild_id)
     .bind(game.channel_id)
     .bind(&game.game_mode)

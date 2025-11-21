@@ -1,5 +1,4 @@
 use crate::models::{Grid, Position, Multiplier};
-use crate::utils::letters::get_letter_value;
 
 pub struct Scorer;
 
