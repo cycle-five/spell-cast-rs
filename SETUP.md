@@ -62,12 +62,13 @@ This guide will help you set up the Spell Cast Discord Activity for local develo
 
 3. Go to "Activities" tab:
    - Click "Enable Activity"
-   - Add development URL: `http://localhost:3000`
+   - Add development URL: `http://localhost:3000` (for Vite dev server)
 
 4. Go to "OAuth2" tab:
    - Copy your **Client ID**
    - Copy your **Client Secret**
-   - Add redirect URI: `http://localhost:3000/api/auth/callback`
+   - Add redirect URI: `http://localhost:3001/api/auth/callback` (backend port for development)
+   - For production, also add: `http://localhost:3000/api/auth/callback`
    - Select scopes: `identify`, `guilds`
 
 5. Go to "Installation" tab:
@@ -137,25 +138,40 @@ This guide will help you set up the Spell Cast Discord Activity for local develo
 
 ## Step 5: Running the Application
 
-### Development Mode
+### Development Mode (with Hot Reload)
 
-You'll need two terminal windows:
+For development with frontend hot-reload, you'll need two terminal windows:
 
-**Terminal 1 - Backend:**
+**Terminal 1 - Backend (Port 3001):**
 ```bash
 cd backend
+# Make sure PORT=3001 in your .env file
 cargo run
 ```
 
-The backend will start on http://localhost:3000
+The backend will start on http://localhost:3001
 
-**Terminal 2 - Frontend (optional if using backend to serve):**
+**Terminal 2 - Frontend Dev Server (Port 3000):**
 ```bash
 cd frontend
 npm run dev
 ```
 
-For development, the backend serves the frontend files, so you only need to run the backend.
+The Vite dev server will start on http://localhost:3000 and proxy API/WebSocket requests to the backend on port 3001.
+
+**Access your application at:** http://localhost:3000
+
+### Production Mode (Backend Only)
+
+For production or if you don't need hot-reload:
+
+```bash
+cd backend
+# Make sure PORT=3000 in your .env file
+cargo run
+```
+
+The backend will serve the static frontend files directly from `../frontend` at http://localhost:3000
 
 ### Testing in Discord
 
@@ -172,8 +188,12 @@ For development, the backend serves the frontend files, so you only need to run 
 
 ## Step 6: Verify Everything Works
 
-1. Check backend health:
+1. Check backend health (adjust port based on your setup):
    ```bash
+   # If running in development mode (backend on 3001)
+   curl http://localhost:3001/health
+   
+   # If running in production mode (backend on 3000)
    curl http://localhost:3000/health
    ```
 
@@ -187,7 +207,11 @@ For development, the backend serves the frontend files, so you only need to run 
    # Install wscat if you don't have it
    npm install -g wscat
 
-   # Connect to WebSocket
+   # Connect to WebSocket (adjust port based on your setup)
+   # Development mode:
+   wscat -c ws://localhost:3001/ws
+   
+   # Production mode:
    wscat -c ws://localhost:3000/ws
    ```
 
