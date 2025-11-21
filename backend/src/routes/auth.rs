@@ -1,4 +1,4 @@
-use crate::AppState;
+use crate::{auth, AppState};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -27,31 +27,51 @@ pub struct UserResponse {
     pub avatar_url: Option<String>,
 }
 
+// Placeholder test user values for development
+// TODO: Remove these once proper Discord OAuth is implemented
+const TEST_USER_ID: i64 = 12345;
+const TEST_USERNAME: &str = "test_user";
+
 /// Exchange Discord authorization code for access token
 pub async fn exchange_code(
-    State(_state): State<Arc<AppState>>,
-    Json(_payload): Json<CodeExchangeRequest>,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<CodeExchangeRequest>,
 ) -> Result<Json<TokenResponse>, StatusCode> {
     // TODO: Implement OAuth2 code exchange with Discord
-    // For now, return a placeholder
-    tracing::warn!("OAuth2 code exchange not yet implemented");
+    // For now, create a test token with placeholder user data
+    tracing::warn!(
+        "OAuth2 code exchange not yet implemented, creating test token for code: {}",
+        payload.code
+    );
+
+    // Generate a JWT token for testing
+    // In production, this should happen after successful Discord OAuth
+    let token = auth::generate_token(TEST_USER_ID, TEST_USERNAME, &state.config.security.jwt_secret)
+        .map_err(|e| {
+            tracing::error!("Failed to generate token: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(TokenResponse {
-        access_token: "placeholder_token".to_string(),
+        access_token: token,
     }))
 }
 
 /// Get current user info from Discord
 pub async fn get_current_user(
+    user: auth::AuthenticatedUser,
     State(_state): State<Arc<AppState>>,
-    // TODO: Extract bearer token from headers
 ) -> Result<Json<UserResponse>, StatusCode> {
-    // TODO: Implement user info retrieval from Discord API
-    tracing::warn!("User info retrieval not yet implemented");
+    // TODO: Implement user info retrieval from Discord API or database
+    tracing::info!(
+        "Getting user info for authenticated user: {} ({})",
+        user.username,
+        user.user_id
+    );
 
     Ok(Json(UserResponse {
-        user_id: 0,
-        username: "placeholder".to_string(),
+        user_id: user.user_id,
+        username: user.username,
         avatar_url: None,
     }))
 }
