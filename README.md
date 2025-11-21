@@ -111,9 +111,10 @@ spell-cast-rs/
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 2. Create a new application
 3. Enable "Embedded App SDK" in Activities tab
-4. Add your app URL (e.g., `http://localhost:3000`)
+4. Add your app URL (e.g., `http://localhost:3000` for the Vite dev server)
 5. Configure OAuth2:
-   - Add redirect URL: `http://localhost:3000/api/auth/callback`
+   - Add redirect URL: `http://localhost:3001/api/auth/callback` (for development with Vite)
+   - For production, add: `http://localhost:3000/api/auth/callback`
    - Copy Client ID and Client Secret to `.env`
    - Required scopes: `identify`, `guilds`
 

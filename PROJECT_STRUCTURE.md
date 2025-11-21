@@ -202,8 +202,16 @@ See `backend/migrations/001_initial_schema.sql` for full schema.
 
 ## Development Workflow
 
+**Option 1: Development with Hot Reload**
 1. Start PostgreSQL: `brew services start postgresql`
-2. Run backend: `cd backend && cargo run`
+2. Run backend: `cd backend && cargo run` (ensure PORT=3001 in .env)
+3. Run Vite dev server: `cd frontend && npm run dev`
+4. Access frontend at `http://localhost:3000` (proxies to backend on 3001)
+5. WebSocket at `ws://localhost:3001/ws`
+
+**Option 2: Production Mode (Backend Only)**
+1. Start PostgreSQL: `brew services start postgresql`
+2. Run backend: `cd backend && cargo run` (ensure PORT=3000 in .env)
 3. Frontend served by backend at `http://localhost:3000`
 4. WebSocket at `ws://localhost:3000/ws`
 
