@@ -27,6 +27,11 @@ pub struct UserResponse {
     pub avatar_url: Option<String>,
 }
 
+// Placeholder test user values for development
+// TODO: Remove these once proper Discord OAuth is implemented
+const TEST_USER_ID: i64 = 12345;
+const TEST_USERNAME: &str = "test_user";
+
 /// Exchange Discord authorization code for access token
 pub async fn exchange_code(
     State(state): State<Arc<AppState>>,
@@ -41,15 +46,11 @@ pub async fn exchange_code(
 
     // Generate a JWT token for testing
     // In production, this should happen after successful Discord OAuth
-    let token = auth::generate_token(
-        12345, // Test user ID
-        "test_user",
-        &state.config.security.jwt_secret,
-    )
-    .map_err(|e| {
-        tracing::error!("Failed to generate token: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let token = auth::generate_token(TEST_USER_ID, TEST_USERNAME, &state.config.security.jwt_secret)
+        .map_err(|e| {
+            tracing::error!("Failed to generate token: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(TokenResponse {
         access_token: token,

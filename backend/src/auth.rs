@@ -48,14 +48,9 @@ where
                     .uri
                     .query()
                     .and_then(|q| {
-                        serde_urlencoded::from_str::<Vec<(String, String)>>(q).ok()
+                        serde_urlencoded::from_str::<std::collections::HashMap<String, String>>(q).ok()
                     })
-                    .and_then(|params| {
-                        params
-                            .iter()
-                            .find(|(k, _)| k == "token")
-                            .map(|(_, v)| v.clone())
-                    })
+                    .and_then(|params| params.get("token").cloned())
             });
 
         async move {
