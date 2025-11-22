@@ -66,13 +66,16 @@ pub async fn exchange_code(
         })?;
 
     // Step 3: Parse Discord user ID
+    // Discord IDs are u64 snowflakes, but we store as i64 in the database
+    // Parse as u64 first to handle all valid Discord IDs, then cast to i64
+    // Note: Very large IDs (> i64::MAX) will wrap to negative, but remain unique
     let user_id = discord_user
         .id
-        .parse::<i64>()
+        .parse::<u64>()
         .map_err(|e| {
             tracing::error!("Failed to parse Discord user ID: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        })? as i64;
 
     // Step 4: Create or update user in database
     let avatar_url = discord_user.avatar.as_ref().map(|avatar_hash| {
