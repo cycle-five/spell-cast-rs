@@ -16,7 +16,7 @@ pub struct UserGuildProfile {
 impl UserGuildProfile {
     /// Get the display name for this user in this guild
     /// Priority: guild nickname > global_name > username
-    pub fn display_name(&self, user: &super::User) -> &str {
+    pub fn display_name<'a>(&'a self, user: &'a super::User) -> &'a str {
         self.nickname
             .as_deref()
             .or(user.global_name.as_deref())

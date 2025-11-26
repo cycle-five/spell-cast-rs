@@ -15,4 +15,7 @@ fn api_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/auth/exchange", axum::routing::post(auth::exchange_code))
         .route("/auth/me", get(auth::get_current_user))
+        .route("/auth/refresh", axum::routing::post(auth::refresh_token))
+        .route("/auth/revoke", axum::routing::post(auth::revoke_token))
+        .route("/auth/logout", axum::routing::post(auth::logout))
 }

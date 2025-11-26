@@ -70,6 +70,59 @@ pub async fn create_or_update_user(
     Ok(user)
 }
 
+/// Update a user's refresh token and expiration time
+///
+/// This is used for token rotation - when we refresh with Discord,
+/// we get a new refresh token that should replace the old one.
+pub async fn update_user_refresh_token(
+    pool: &PgPool,
+    user_id: i64,
+    refresh_token: &str,
+    token_expires_at: chrono::DateTime<chrono::Utc>,
+    encryption_key: &str,
+) -> Result<()> {
+    // Encrypt the new refresh token
+    let encrypted_token = encryption::encrypt(refresh_token, encryption_key)
+        .map_err(|e| sqlx::Error::Protocol(format!("Failed to encrypt refresh token: {}", e)))?;
+
+    sqlx::query(
+        r#"
+        UPDATE users
+        SET refresh_token = $1,
+            token_expires_at = $2,
+            updated_at = NOW()
+        WHERE user_id = $3
+        "#
+    )
+    .bind(&encrypted_token)
+    .bind(token_expires_at)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Clear a user's OAuth tokens from the database
+///
+/// Used for logout and token revocation operations.
+pub async fn clear_user_tokens(pool: &PgPool, user_id: i64) -> Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE users
+        SET refresh_token = NULL,
+            token_expires_at = NULL,
+            updated_at = NOW()
+        WHERE user_id = $1
+        "#
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 // Game queries
 // TODO: Game logic not yet fully implemented - these will be used when game state management is added
 #[allow(dead_code)]
