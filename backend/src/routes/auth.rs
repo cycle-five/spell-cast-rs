@@ -303,8 +303,8 @@ pub async fn refresh_token(
 ///
 /// This endpoint:
 /// 1. Retrieves the stored refresh token
-/// 2. Revokes it with Discord's API
-/// 3. Clears all tokens from the database
+/// 2. Attempts to revoke it with Discord's API (best-effort; may fail, but continues)
+/// 3. Clears all tokens from the database (regardless of Discord API result or user existence)
 pub async fn revoke_token(
     user: auth::AuthenticatedUser,
     State(state): State<Arc<AppState>>,
