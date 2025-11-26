@@ -15,24 +15,35 @@ pub async fn create_or_update_user(
     user_id: i64,
     username: &str,
     avatar_url: Option<&str>,
+    refresh_token: Option<&str>,
+    token_expires_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<User> {
     sqlx::query_as::<_, User>(
         r#"
-        INSERT INTO users (user_id, username, avatar_url)
-        VALUES ($1, $2, $3)
+        INSERT INTO users (user_id, username, avatar_url, refresh_token, token_expires_at)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (user_id)
-        DO UPDATE SET username = $2, avatar_url = $3, updated_at = NOW()
+        DO UPDATE SET
+            username = $2,
+            avatar_url = $3,
+            refresh_token = $4,
+            token_expires_at = $5,
+            updated_at = NOW()
         RETURNING *
         "#
     )
     .bind(user_id)
     .bind(username)
     .bind(avatar_url)
+    .bind(refresh_token)
+    .bind(token_expires_at)
     .fetch_one(pool)
     .await
 }
 
 // Game queries
+// TODO: Game logic not yet fully implemented - these will be used when game state management is added
+#[allow(dead_code)]
 pub async fn create_game(pool: &PgPool, game: &Game) -> Result<Game> {
     sqlx::query_as::<_, Game>(
         r#"

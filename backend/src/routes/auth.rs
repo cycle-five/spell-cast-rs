@@ -19,8 +19,6 @@ pub struct DiscordUser {
     pub id: String,
     pub username: String,
     pub avatar: Option<String>,
-    pub discriminator: Option<String>,
-    pub global_name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -34,11 +32,12 @@ pub struct UserResponse {
 #[derive(Debug, Deserialize)]
 struct DiscordTokenResponse {
     access_token: String,
+    #[allow(dead_code)]
     token_type: String,
     expires_in: i64,
-    /// Currently unused; not stored because token refresh functionality is not yet implemented.
-    /// When implementing token refresh, store this in the database.
+    /// Stored in database for token refresh functionality
     refresh_token: String,
+    #[allow(dead_code)]
     scope: String,
 }
 
@@ -58,7 +57,7 @@ pub async fn exchange_code(
         })?;
 
     // Step 2: Get user info from Discord API
-    let discord_user = get_discord_user_info(&discord_token.access_token)
+    let discord_user = get_discord_user_info(&discord_token.access_token, &state.http_client)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get Discord user info: {}", e);
@@ -85,11 +84,16 @@ pub async fn exchange_code(
         )
     });
 
+    // Calculate token expiration time (Discord tokens expire in expires_in seconds)
+    let token_expires_at = chrono::Utc::now() + chrono::Duration::seconds(discord_token.expires_in);
+
     db::queries::create_or_update_user(
         &state.db,
         user_id,
         &discord_user.username,
         avatar_url.as_deref(),
+        Some(&discord_token.refresh_token),
+        Some(token_expires_at),
     )
     .await
     .map_err(|e| {
@@ -116,8 +120,6 @@ async fn exchange_code_with_discord(
     state: &AppState,
     code: &str,
 ) -> anyhow::Result<DiscordTokenResponse> {
-    let client = reqwest::Client::new();
-
     let params = [
         ("client_id", state.config.discord.client_id.as_str()),
         ("client_secret", state.config.discord.client_secret.as_str()),
@@ -126,7 +128,7 @@ async fn exchange_code_with_discord(
         ("redirect_uri", state.config.discord.redirect_uri.as_str()),
     ];
 
-    let response = client
+    let response = state.http_client
         .post("https://discord.com/api/oauth2/token")
         .form(&params)
         .send()
@@ -144,10 +146,11 @@ async fn exchange_code_with_discord(
 }
 
 /// Get user information from Discord API
-async fn get_discord_user_info(access_token: &str) -> anyhow::Result<DiscordUser> {
-    let client = reqwest::Client::new();
-
-    let response = client
+async fn get_discord_user_info(
+    access_token: &str,
+    http_client: &reqwest::Client,
+) -> anyhow::Result<DiscordUser> {
+    let response = http_client
         .get("https://discord.com/api/users/@me")
         .header("Authorization", format!("Bearer {}", access_token))
         .send()

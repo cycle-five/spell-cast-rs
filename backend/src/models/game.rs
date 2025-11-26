@@ -93,4 +93,6 @@ pub struct GridCell {
     pub multiplier: Option<Multiplier>,
 }
 
+// TODO: Grid type will be used when game engine is fully integrated
+#[allow(dead_code)]
 pub type Grid = Vec<Vec<GridCell>>;

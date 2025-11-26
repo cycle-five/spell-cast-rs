@@ -12,6 +12,8 @@ pub struct User {
     pub total_score: i64,
     pub highest_word_score: i32,
     pub highest_word: Option<String>,
+    pub refresh_token: Option<String>,
+    pub token_expires_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -30,6 +32,8 @@ pub struct UserStats {
 }
 
 impl User {
+    // TODO: These methods will be used for user stats endpoints
+    #[allow(dead_code)]
     pub fn win_rate(&self) -> f32 {
         if self.total_games == 0 {
             0.0
