@@ -17,8 +17,11 @@ pub struct TokenResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DiscordUser {
     pub id: String,
+    /// Unique username (e.g., "username" or "username#0")
     pub username: String,
     pub avatar: Option<String>,
+    /// Display name shown in Discord UI (preferred for display)
+    pub global_name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -91,6 +94,7 @@ pub async fn exchange_code(
         &state.db,
         user_id,
         &discord_user.username,
+        discord_user.global_name.as_deref(),
         avatar_url.as_deref(),
         Some(&discord_token.refresh_token),
         Some(token_expires_at),

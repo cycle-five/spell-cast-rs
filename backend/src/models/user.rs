@@ -5,7 +5,10 @@ use sqlx::FromRow;
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub user_id: i64,
+    /// Unique username (e.g., "username" or "username#0")
     pub username: String,
+    /// Display name shown in Discord UI (preferred for display)
+    pub global_name: Option<String>,
     pub avatar_url: Option<String>,
     pub total_games: i32,
     pub total_wins: i32,
@@ -32,6 +35,12 @@ pub struct UserStats {
 }
 
 impl User {
+    /// Get the best display name for this user
+    /// Priority: global_name > username
+    pub fn display_name(&self) -> &str {
+        self.global_name.as_deref().unwrap_or(&self.username)
+    }
+
     // TODO: These methods will be used for user stats endpoints
     #[allow(dead_code)]
     pub fn win_rate(&self) -> f32 {
@@ -42,6 +51,7 @@ impl User {
         }
     }
 
+    #[allow(dead_code)]
     pub fn to_stats(&self) -> UserStats {
         UserStats {
             user_id: self.user_id,
