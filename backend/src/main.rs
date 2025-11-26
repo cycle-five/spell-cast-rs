@@ -2,6 +2,7 @@ mod auth;
 mod config;
 mod db;
 mod dictionary;
+mod encryption;
 mod game;
 mod models;
 mod routes;

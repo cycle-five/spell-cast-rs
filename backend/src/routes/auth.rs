@@ -98,6 +98,7 @@ pub async fn exchange_code(
         avatar_url.as_deref(),
         Some(&discord_token.refresh_token),
         Some(token_expires_at),
+        &state.config.security.encryption_key,
     )
     .await
     .map_err(|e| {
@@ -183,7 +184,7 @@ pub async fn get_current_user(
     );
 
     // Fetch user from database
-    let db_user = db::queries::get_user(&state.db, user.user_id)
+    let db_user = db::queries::get_user(&state.db, user.user_id, &state.config.security.encryption_key)
         .await
         .map_err(|e| {
             tracing::error!("Database error fetching user: {}", e);

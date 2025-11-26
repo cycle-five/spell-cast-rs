@@ -34,6 +34,7 @@ pub struct ServerConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SecurityConfig {
     pub jwt_secret: String,
+    pub encryption_key: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -80,6 +81,8 @@ impl Config {
         let security = SecurityConfig {
             jwt_secret: env::var("JWT_SECRET")
                 .context("JWT_SECRET must be set")?,
+            encryption_key: env::var("ENCRYPTION_KEY")
+                .context("ENCRYPTION_KEY must be set (32-byte base64 encoded key)")?,
         };
 
         let game = GameConfig {

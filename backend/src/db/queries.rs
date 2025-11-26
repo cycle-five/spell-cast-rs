@@ -1,13 +1,23 @@
-use crate::models::{User, Game, GamePlayer, GameBoard, GameMove, UserGuildProfile};
+use crate::{encryption, models::{User, Game, GamePlayer, GameBoard, GameMove, UserGuildProfile}};
 use sqlx::{PgPool, Result};
 use uuid::Uuid;
 
 // User queries
-pub async fn get_user(pool: &PgPool, user_id: i64) -> Result<Option<User>> {
-    sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
+pub async fn get_user(pool: &PgPool, user_id: i64, encryption_key: &str) -> Result<Option<User>> {
+    let mut user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
         .bind(user_id)
         .fetch_optional(pool)
-        .await
+        .await?;
+
+    // Decrypt refresh token if present
+    if let Some(ref mut u) = user {
+        if let Some(ref encrypted_token) = u.refresh_token {
+            u.refresh_token = encryption::decrypt(encrypted_token, encryption_key)
+                .ok();
+        }
+    }
+
+    Ok(user)
 }
 
 pub async fn create_or_update_user(
@@ -18,8 +28,17 @@ pub async fn create_or_update_user(
     avatar_url: Option<&str>,
     refresh_token: Option<&str>,
     token_expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    encryption_key: &str,
 ) -> Result<User> {
-    sqlx::query_as::<_, User>(
+    // Encrypt refresh token if present
+    let encrypted_token = if let Some(token) = refresh_token {
+        Some(encryption::encrypt(token, encryption_key)
+            .map_err(|e| sqlx::Error::Protocol(format!("Failed to encrypt refresh token: {}", e)))?)
+    } else {
+        None
+    };
+
+    let mut user = sqlx::query_as::<_, User>(
         r#"
         INSERT INTO users (user_id, username, global_name, avatar_url, refresh_token, token_expires_at)
         VALUES ($1, $2, $3, $4, $5, $6)
@@ -38,10 +57,17 @@ pub async fn create_or_update_user(
     .bind(username)
     .bind(global_name)
     .bind(avatar_url)
-    .bind(refresh_token)
+    .bind(encrypted_token.as_deref())
     .bind(token_expires_at)
     .fetch_one(pool)
-    .await
+    .await?;
+
+    // Decrypt refresh token for the returned user
+    if let Some(ref encrypted) = user.refresh_token {
+        user.refresh_token = encryption::decrypt(encrypted, encryption_key).ok();
+    }
+
+    Ok(user)
 }
 
 // Game queries
@@ -186,6 +212,7 @@ pub async fn get_game_moves(pool: &PgPool, game_id: Uuid) -> Result<Vec<GameMove
 }
 
 // User guild profile queries
+#[allow(dead_code)]
 pub async fn get_user_guild_profile(
     pool: &PgPool,
     user_id: i64,
@@ -200,6 +227,7 @@ pub async fn get_user_guild_profile(
     .await
 }
 
+#[allow(dead_code)]
 pub async fn create_or_update_guild_profile(
     pool: &PgPool,
     user_id: i64,
