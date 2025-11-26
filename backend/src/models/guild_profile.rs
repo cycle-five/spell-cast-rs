@@ -16,10 +16,10 @@ pub struct UserGuildProfile {
 impl UserGuildProfile {
     /// Get the display name for this user in this guild
     /// Priority: guild nickname > global_name > username
-    pub fn display_name(&self, user: &super::User) -> String {
+    pub fn display_name(&self, user: &super::User) -> &str {
         self.nickname
-            .clone()
-            .or_else(|| user.global_name.clone())
-            .unwrap_or_else(|| user.username.clone())
+            .as_deref()
+            .or(user.global_name.as_deref())
+            .unwrap_or(&user.username)
     }
 }
