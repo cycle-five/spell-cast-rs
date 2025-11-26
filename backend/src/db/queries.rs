@@ -1,38 +1,78 @@
-use crate::models::{User, Game, GamePlayer, GameBoard, GameMove};
+use crate::{encryption, models::{User, Game, GamePlayer, GameBoard, GameMove, UserGuildProfile}};
 use sqlx::{PgPool, Result};
 use uuid::Uuid;
 
 // User queries
-pub async fn get_user(pool: &PgPool, user_id: i64) -> Result<Option<User>> {
-    sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
+pub async fn get_user(pool: &PgPool, user_id: i64, encryption_key: &str) -> Result<Option<User>> {
+    let mut user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
         .bind(user_id)
         .fetch_optional(pool)
-        .await
+        .await?;
+
+    // Decrypt refresh token if present
+    if let Some(ref mut u) = user {
+        if let Some(ref encrypted_token) = u.refresh_token {
+            u.refresh_token = encryption::decrypt(encrypted_token, encryption_key)
+                .ok();
+        }
+    }
+
+    Ok(user)
 }
 
 pub async fn create_or_update_user(
     pool: &PgPool,
     user_id: i64,
     username: &str,
+    global_name: Option<&str>,
     avatar_url: Option<&str>,
+    refresh_token: Option<&str>,
+    token_expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    encryption_key: &str,
 ) -> Result<User> {
-    sqlx::query_as::<_, User>(
+    // Encrypt refresh token if present
+    let encrypted_token = if let Some(token) = refresh_token {
+        Some(encryption::encrypt(token, encryption_key)
+            .map_err(|e| sqlx::Error::Protocol(format!("Failed to encrypt refresh token: {}", e)))?)
+    } else {
+        None
+    };
+
+    let mut user = sqlx::query_as::<_, User>(
         r#"
-        INSERT INTO users (user_id, username, avatar_url)
-        VALUES ($1, $2, $3)
+        INSERT INTO users (user_id, username, global_name, avatar_url, refresh_token, token_expires_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (user_id)
-        DO UPDATE SET username = $2, avatar_url = $3, updated_at = NOW()
+        DO UPDATE SET
+            username = $2,
+            global_name = $3,
+            avatar_url = $4,
+            refresh_token = $5,
+            token_expires_at = $6,
+            updated_at = NOW()
         RETURNING *
         "#
     )
     .bind(user_id)
     .bind(username)
+    .bind(global_name)
     .bind(avatar_url)
+    .bind(encrypted_token.as_deref())
+    .bind(token_expires_at)
     .fetch_one(pool)
-    .await
+    .await?;
+
+    // Decrypt refresh token for the returned user
+    if let Some(ref encrypted) = user.refresh_token {
+        user.refresh_token = encryption::decrypt(encrypted, encryption_key).ok();
+    }
+
+    Ok(user)
 }
 
 // Game queries
+// TODO: Game logic not yet fully implemented - these will be used when game state management is added
+#[allow(dead_code)]
 pub async fn create_game(pool: &PgPool, game: &Game) -> Result<Game> {
     sqlx::query_as::<_, Game>(
         r#"
@@ -168,5 +208,46 @@ pub async fn get_game_moves(pool: &PgPool, game_id: Uuid) -> Result<Vec<GameMove
     )
     .bind(game_id)
     .fetch_all(pool)
+    .await
+}
+
+// User guild profile queries
+#[allow(dead_code)]
+pub async fn get_user_guild_profile(
+    pool: &PgPool,
+    user_id: i64,
+    guild_id: i64,
+) -> Result<Option<UserGuildProfile>> {
+    sqlx::query_as::<_, UserGuildProfile>(
+        "SELECT * FROM user_guild_profiles WHERE user_id = $1 AND guild_id = $2"
+    )
+    .bind(user_id)
+    .bind(guild_id)
+    .fetch_optional(pool)
+    .await
+}
+
+#[allow(dead_code)]
+pub async fn create_or_update_guild_profile(
+    pool: &PgPool,
+    user_id: i64,
+    guild_id: i64,
+    nickname: Option<&str>,
+) -> Result<UserGuildProfile> {
+    sqlx::query_as::<_, UserGuildProfile>(
+        r#"
+        INSERT INTO user_guild_profiles (user_id, guild_id, nickname)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user_id, guild_id)
+        DO UPDATE SET
+            nickname = $3,
+            updated_at = NOW()
+        RETURNING *
+        "#
+    )
+    .bind(user_id)
+    .bind(guild_id)
+    .bind(nickname)
+    .fetch_one(pool)
     .await
 }

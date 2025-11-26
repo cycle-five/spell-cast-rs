@@ -2,6 +2,7 @@ mod auth;
 mod config;
 mod db;
 mod dictionary;
+mod encryption;
 mod game;
 mod models;
 mod routes;
@@ -30,6 +31,7 @@ pub struct AppState {
     pub db: PgPool,
     pub dictionary: Dictionary,
     pub active_games: DashMap<Uuid, GameSession>,
+    pub http_client: reqwest::Client,
 }
 
 /// In-memory game session data
@@ -83,12 +85,19 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Create shared HTTP client for reusing connections
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+    tracing::info!("HTTP client initialized");
+
     // Create application state
     let state = Arc::new(AppState {
         config: config.clone(),
         db,
         dictionary,
         active_games: DashMap::new(),
+        http_client,
     });
 
     // Configure CORS

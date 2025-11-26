@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use once_cell::sync::Lazy;
 
 /// Letter values similar to Scrabble scoring
+/// TODO: Will be used by game engine once integrated
+#[allow(dead_code)]
 pub static LETTER_VALUES: Lazy<HashMap<char, u8>> = Lazy::new(|| {
     let mut map = HashMap::new();
 
@@ -43,6 +45,8 @@ pub static LETTER_VALUES: Lazy<HashMap<char, u8>> = Lazy::new(|| {
 
 /// Letter frequency distribution for English (approximate)
 /// Used for weighted random generation
+/// TODO: Will be used by grid generator once integrated
+#[allow(dead_code)]
 pub static LETTER_DISTRIBUTION: Lazy<Vec<(char, f32)>> = Lazy::new(|| {
     vec![
         ('E', 12.70),
@@ -75,12 +79,16 @@ pub static LETTER_DISTRIBUTION: Lazy<Vec<(char, f32)>> = Lazy::new(|| {
 });
 
 /// Get the point value for a letter
+/// TODO: Will be used by scorer once integrated
+#[allow(dead_code)]
 pub fn get_letter_value(letter: char) -> u8 {
     let upper = letter.to_ascii_uppercase();
     *LETTER_VALUES.get(&upper).unwrap_or(&1)
 }
 
 /// Calculate the cumulative distribution for weighted random selection
+/// TODO: Will be used by grid generator once integrated
+#[allow(dead_code)]
 pub fn get_cumulative_distribution() -> Vec<(char, f32)> {
     let mut cumulative = 0.0;
     LETTER_DISTRIBUTION
