@@ -199,9 +199,9 @@ async fn refresh_discord_token(
     state: &AppState,
     refresh_token: &str,
 ) -> anyhow::Result<DiscordTokenResponse> {
+    let client_id = state.config.discord.client_id.as_str();
+    let client_secret = state.config.discord.client_secret.as_str();
     let params = [
-        ("client_id", state.config.discord.client_id.as_str()),
-        ("client_secret", state.config.discord.client_secret.as_str()),
         ("grant_type", "refresh_token"),
         ("refresh_token", refresh_token),
     ];
@@ -209,6 +209,8 @@ async fn refresh_discord_token(
     let response = state
         .http_client
         .post("https://discord.com/api/v10/oauth2/token")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .basic_auth(client_id, Some(client_secret))
         .form(&params)
         .send()
         .await?;
@@ -226,15 +228,15 @@ async fn refresh_discord_token(
 
 /// Revoke a Discord OAuth2 token
 async fn revoke_discord_token(state: &AppState, token: &str) -> anyhow::Result<()> {
-    let params = [
-        ("client_id", state.config.discord.client_id.as_str()),
-        ("client_secret", state.config.discord.client_secret.as_str()),
-        ("token", token),
-    ];
+    let client_id = state.config.discord.client_id.as_str();
+    let client_secret = state.config.discord.client_secret.as_str();
+    let params = [("token", token)];
 
     let response = state
         .http_client
         .post("https://discord.com/api/v10/oauth2/token/revoke")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .basic_auth(client_id, Some(client_secret))
         .form(&params)
         .send()
         .await?;
