@@ -1,6 +1,16 @@
 import { DiscordSDK } from '@discord/embedded-app-sdk';
 
 let discordSdk = null;
+let isDiscordActivity = false;
+
+// Helper to get the correct API base URL
+export function getApiUrl(path) {
+  // When running inside Discord Activity, use the proxy path directly
+  if (isDiscordActivity) {
+    return `/.proxy${path}`;
+  }
+  return path;
+}
 
 export async function initDiscord() {
   // Get client ID from environment or config
@@ -20,6 +30,10 @@ export async function initDiscord() {
     await discordSdk.ready();
     console.log('Discord client is ready');
 
+    // Detect if we're running inside Discord Activity
+    isDiscordActivity = window.location.host.includes('discordsays.com');
+    console.log('Running in Discord Activity:', isDiscordActivity);
+
     // Authorize the app
     const { code } = await discordSdk.commands.authorize({
       client_id: clientId,
@@ -34,8 +48,10 @@ export async function initDiscord() {
 
     console.log('Authorization code received');
 
-    // Exchange code for access token
-    const response = await fetch('/api/auth/exchange', {
+    // Exchange code for access token via backend
+    // The backend exchanges with Discord and returns both the Discord access token
+    // (for SDK authentication) and our JWT (for backend API calls)
+    const response = await fetch(getApiUrl('/api/auth/exchange'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -44,15 +60,18 @@ export async function initDiscord() {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to exchange authorization code');
+      const errorText = await response.text();
+      console.error('Exchange failed:', response.status, errorText);
+      throw new Error(`Failed to exchange authorization code: ${response.status}`);
     }
 
-    const { access_token } = await response.json();
-    console.log('Access token received');
+    const { access_token, discord_access_token } = await response.json();
+    console.log('Tokens received from backend');
 
-    // Authenticate with Discord
+    // Authenticate with Discord using the DISCORD access token (not our JWT)
+    // This completes the OAuth flow with Discord's SDK
     const auth = await discordSdk.commands.authenticate({
-      access_token,
+      access_token: discord_access_token,
     });
 
     console.log('Authenticated with Discord:', auth.user);
@@ -60,7 +79,9 @@ export async function initDiscord() {
     return {
       sdk: discordSdk,
       user: auth.user,
+      // Return our JWT for backend API authentication
       access_token,
+      discord_access_token,
     };
   } catch (error) {
     console.error('Discord initialization error:', error);

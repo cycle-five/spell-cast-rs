@@ -14,11 +14,14 @@ class App {
       console.log('Initializing Spell Cast...');
 
       // Initialize Discord SDK
-      const discordSdk = await initDiscord();
-      console.log('Discord SDK initialized:', discordSdk);
+      const discordResult = await initDiscord();
+      console.log('Discord SDK initialized:', discordResult);
 
-      // Initialize WebSocket connection
-      const wsUrl = this.getWebSocketUrl();
+      // Display the authenticated user in the lobby
+      this.displayCurrentUser(discordResult.user);
+
+      // Initialize WebSocket connection with JWT token for authentication
+      const wsUrl = this.getWebSocketUrl(discordResult.access_token);
       this.gameClient = new GameClient(wsUrl);
 
       // Initialize UI
@@ -37,10 +40,17 @@ class App {
     }
   }
 
-  getWebSocketUrl() {
+  getWebSocketUrl(token) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    return `${protocol}//${host}/ws`;
+
+    // When running inside Discord Activity (discordsays.com), use the proxy path directly
+    // Don't rely on patchUrlMappings for WebSocket to avoid double-patching
+    const isDiscordActivity = host.includes('discordsays.com');
+    const wsPath = isDiscordActivity ? '/.proxy/ws' : '/ws';
+
+    // Append JWT token as query parameter for authentication
+    return `${protocol}//${host}${wsPath}?token=${encodeURIComponent(token)}`;
   }
 
   setupEventListeners() {
@@ -100,6 +110,34 @@ class App {
     setTimeout(() => {
       toast.classList.add('hidden');
     }, 5000);
+  }
+
+  displayCurrentUser(user) {
+    const container = document.getElementById('players-container');
+    if (!container || !user) return;
+
+    const avatarUrl = user.avatar
+      ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
+      : `https://cdn.discordapp.com/embed/avatars/${parseInt(user.id) % 5}.png`;
+
+    // Clear container
+    container.innerHTML = '';
+    // Create player card
+    const playerCard = document.createElement('div');
+    playerCard.className = 'player-card current-user';
+    // Create avatar image
+    const img = document.createElement('img');
+    img.src = avatarUrl;
+    img.alt = user.username;
+    img.className = 'player-avatar';
+    // Create name span
+    const span = document.createElement('span');
+    span.className = 'player-name';
+    span.textContent = user.global_name || user.username;
+    // Append elements
+    playerCard.appendChild(img);
+    playerCard.appendChild(span);
+    container.appendChild(playerCard);
   }
 }
 

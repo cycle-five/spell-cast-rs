@@ -1,7 +1,7 @@
 # GitHub Copilot Instructions for spell-cast-rs
 
 ## Project Overview
-This is a Rust-based spell casting system. The project implements a spell casting framework with type-safe magic system.
+This is a Rust-based Spell Cast Reduxing system. The project implements a Spell Cast Reduxing framework with type-safe magic system.
 
 ## Tech Stack
 - **Language**: Rust

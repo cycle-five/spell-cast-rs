@@ -1,7 +1,7 @@
 {
   "name": "spell-cast-frontend",
   "version": "0.1.0",
-  "description": "Spell Cast Discord Activity - Frontend",
+  "description": "Spell Cast Redux Discord Activity - Frontend",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,6 @@
     "@discord/embedded-app-sdk": "^1.2.0"
   },
   "devDependencies": {
-    "vite": "^5.0.0"
+    "vite": "^5.4.21"
   }
 }

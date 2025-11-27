@@ -10,7 +10,12 @@ pub struct CodeExchangeRequest {
 
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
+    /// JWT token for backend API authentication
     pub access_token: String,
+    /// Discord OAuth access token for Discord SDK authentication
+    /// This is needed for discordSdk.commands.authenticate()
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discord_access_token: Option<String>,
 }
 
 /// Discord user response from /users/@me endpoint
@@ -120,8 +125,12 @@ pub async fn exchange_code(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    // Return both tokens:
+    // - access_token: Our JWT for backend API calls
+    // - discord_access_token: Discord's OAuth token for SDK authentication
     Ok(Json(TokenResponse {
         access_token: jwt_token,
+        discord_access_token: Some(discord_token.access_token),
     }))
 }
 
@@ -130,9 +139,9 @@ async fn exchange_code_with_discord(
     state: &AppState,
     code: &str,
 ) -> anyhow::Result<DiscordTokenResponse> {
+    let client_id = state.config.discord.client_id.as_str();
+    let client_secret = state.config.discord.client_secret.as_str();
     let params = [
-        ("client_id", state.config.discord.client_id.as_str()),
-        ("client_secret", state.config.discord.client_secret.as_str()),
         ("grant_type", "authorization_code"),
         ("code", code),
         ("redirect_uri", state.config.discord.redirect_uri.as_str()),
@@ -140,7 +149,9 @@ async fn exchange_code_with_discord(
 
     let response = state
         .http_client
-        .post("https://discord.com/api/oauth2/token")
+        .post("https://discord.com/api/v10/oauth2/token")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .basic_auth(client_id, Some(client_secret))
         .form(&params)
         .send()
         .await?;
@@ -153,6 +164,7 @@ async fn exchange_code_with_discord(
     }
 
     let token_response = response.json::<DiscordTokenResponse>().await?;
+    tracing::debug!("Received Discord token response: {:?}", token_response);
     Ok(token_response)
 }
 
@@ -162,7 +174,7 @@ async fn get_discord_user_info(
     http_client: &reqwest::Client,
 ) -> anyhow::Result<DiscordUser> {
     let response = http_client
-        .get("https://discord.com/api/users/@me")
+        .get("https://discord.com/api/v10/users/@me")
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .await?;
@@ -187,16 +199,18 @@ async fn refresh_discord_token(
     state: &AppState,
     refresh_token: &str,
 ) -> anyhow::Result<DiscordTokenResponse> {
+    let client_id = state.config.discord.client_id.as_str();
+    let client_secret = state.config.discord.client_secret.as_str();
     let params = [
-        ("client_id", state.config.discord.client_id.as_str()),
-        ("client_secret", state.config.discord.client_secret.as_str()),
         ("grant_type", "refresh_token"),
         ("refresh_token", refresh_token),
     ];
 
     let response = state
         .http_client
-        .post("https://discord.com/api/oauth2/token")
+        .post("https://discord.com/api/v10/oauth2/token")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .basic_auth(client_id, Some(client_secret))
         .form(&params)
         .send()
         .await?;
@@ -214,15 +228,15 @@ async fn refresh_discord_token(
 
 /// Revoke a Discord OAuth2 token
 async fn revoke_discord_token(state: &AppState, token: &str) -> anyhow::Result<()> {
-    let params = [
-        ("client_id", state.config.discord.client_id.as_str()),
-        ("client_secret", state.config.discord.client_secret.as_str()),
-        ("token", token),
-    ];
+    let client_id = state.config.discord.client_id.as_str();
+    let client_secret = state.config.discord.client_secret.as_str();
+    let params = [("token", token)];
 
     let response = state
         .http_client
-        .post("https://discord.com/api/oauth2/token/revoke")
+        .post("https://discord.com/api/v10/oauth2/token/revoke")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .basic_auth(client_id, Some(client_secret))
         .form(&params)
         .send()
         .await?;
@@ -325,6 +339,8 @@ pub async fn refresh_token(
 
     Ok(Json(TokenResponse {
         access_token: jwt_token,
+        // Also return the new Discord access token for SDK re-authentication if needed
+        discord_access_token: Some(discord_token.access_token),
     }))
 }
 
@@ -459,11 +475,28 @@ mod tests {
     fn test_token_response_serialization() {
         let response = TokenResponse {
             access_token: "jwt_token_here".to_string(),
+            discord_access_token: Some("discord_token_here".to_string()),
         };
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("access_token"));
         assert!(json.contains("jwt_token_here"));
+        assert!(json.contains("discord_access_token"));
+        assert!(json.contains("discord_token_here"));
+    }
+
+    #[test]
+    fn test_token_response_serialization_without_discord_token() {
+        let response = TokenResponse {
+            access_token: "jwt_token_here".to_string(),
+            discord_access_token: None,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("access_token"));
+        assert!(json.contains("jwt_token_here"));
+        // discord_access_token should be skipped when None
+        assert!(!json.contains("discord_access_token"));
     }
 
     #[test]
@@ -543,6 +576,7 @@ mod tests {
     fn test_token_response_debug() {
         let response = TokenResponse {
             access_token: "secret_token".to_string(),
+            discord_access_token: Some("discord_secret".to_string()),
         };
 
         let debug_str = format!("{:?}", response);

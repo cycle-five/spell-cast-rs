@@ -1,6 +1,6 @@
-# Spell Cast - Setup Guide
+# Spell Cast Redux - Setup Guide
 
-This guide will help you set up the Spell Cast Discord Activity for local development.
+This guide will help you set up the Spell Cast Redux Discord Activity for local development.
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ This guide will help you set up the Spell Cast Discord Activity for local develo
 
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 
-2. Click "New Application" and name it "Spell Cast"
+2. Click "New Application" and name it "Spell Cast Redux"
 
 3. Go to "Activities" tab:
    - Click "Enable Activity"
@@ -74,6 +74,12 @@ This guide will help you set up the Spell Cast Discord Activity for local develo
 5. Go to "Installation" tab:
    - Set install link to "Discord Provided Link"
    - Select installation contexts: "Guild Install", "User Install"
+
+6. Go to "Activities -> URL Mappings"
+   - Root Mapping / -> spellcast2.twkr.io
+   - Proxy Path Mappings
+      * /api -> spellcast2.twkr.io/api
+      * /ws -> spellcast2.twkr.io
 
 ## Step 3: Backend Configuration
 
