@@ -57,7 +57,7 @@ spell-cast-rs/
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/cycle-five/spell-cast-rs
    cd spell-cast-rs/backend
    ```
 
@@ -74,8 +74,8 @@ spell-cast-rs/
 
 4. **Create database**
    ```bash
-   createdb spellcast
-   sqlx migrate run
+   export DATABASE_URL=postgresql://postgres:password@localhost:5432/spellcast
+   sqlx database setup
    ```
 
 5. **Download word dictionary**

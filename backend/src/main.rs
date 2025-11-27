@@ -106,14 +106,18 @@ async fn main() -> Result<()> {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    // Serve frontend static files
+    let frontend_service = ServeDir::new("../frontend");
+
     // Build router
     let app = Router::new()
         // WebSocket endpoint
         .route("/ws", get(websocket::handle_websocket))
         // API routes
         .merge(routes::create_routes())
-        // Serve frontend static files
-        .nest_service("/play", ServeDir::new("../frontend"))
+        // Serve frontend at /play and static assets at root
+        .nest_service("/play", frontend_service.clone())
+        .fallback_service(frontend_service)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
