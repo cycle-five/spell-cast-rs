@@ -12,6 +12,9 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3001',
       },
+      '/health': {
+        target: 'http://localhost:3001',
+      },
     },
   },
   build: {
