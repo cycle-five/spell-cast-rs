@@ -168,6 +168,26 @@ button {
   margin-bottom: 1rem;
 }
 
+.player-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: var(--surface-light);
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+}
+
+.player-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.player-card .player-name {
+  font-weight: 500;
+}
+
 /* Error Toast */
 .error-toast {
   position: fixed;

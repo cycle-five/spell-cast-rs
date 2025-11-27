@@ -17,6 +17,9 @@ class App {
       const discordResult = await initDiscord();
       console.log('Discord SDK initialized:', discordResult);
 
+      // Display the authenticated user in the lobby
+      this.displayCurrentUser(discordResult.user);
+
       // Initialize WebSocket connection with JWT token for authentication
       const wsUrl = this.getWebSocketUrl(discordResult.access_token);
       this.gameClient = new GameClient(wsUrl);
@@ -107,6 +110,22 @@ class App {
     setTimeout(() => {
       toast.classList.add('hidden');
     }, 5000);
+  }
+
+  displayCurrentUser(user) {
+    const container = document.getElementById('players-container');
+    if (!container || !user) return;
+
+    const avatarUrl = user.avatar
+      ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
+      : `https://cdn.discordapp.com/embed/avatars/${parseInt(user.id) % 5}.png`;
+
+    container.innerHTML = `
+      <div class="player-card current-user">
+        <img src="${avatarUrl}" alt="${user.username}" class="player-avatar">
+        <span class="player-name">${user.global_name || user.username}</span>
+      </div>
+    `;
   }
 }
 
