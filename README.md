@@ -175,7 +175,7 @@ See [API.md](./API.md) for full documentation.
 
 ## License
 
-MIT License - See LICENSE file for details
+GPLv3
 
 ## Contributing
 

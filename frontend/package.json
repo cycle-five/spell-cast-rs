@@ -2,6 +2,7 @@
   "name": "spell-cast-frontend",
   "version": "0.1.0",
   "description": "Spell Cast Redux Discord Activity - Frontend",
+  "license": "GPL-3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
