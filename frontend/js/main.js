@@ -14,11 +14,11 @@ class App {
       console.log('Initializing Spell Cast...');
 
       // Initialize Discord SDK
-      const discordSdk = await initDiscord();
-      console.log('Discord SDK initialized:', discordSdk);
+      const discordResult = await initDiscord();
+      console.log('Discord SDK initialized:', discordResult);
 
-      // Initialize WebSocket connection
-      const wsUrl = this.getWebSocketUrl();
+      // Initialize WebSocket connection with JWT token for authentication
+      const wsUrl = this.getWebSocketUrl(discordResult.access_token);
       this.gameClient = new GameClient(wsUrl);
 
       // Initialize UI
@@ -37,7 +37,7 @@ class App {
     }
   }
 
-  getWebSocketUrl() {
+  getWebSocketUrl(token) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
 
@@ -46,7 +46,8 @@ class App {
     const isDiscordActivity = host.includes('discordsays.com');
     const wsPath = isDiscordActivity ? '/.proxy/ws' : '/ws';
 
-    return `${protocol}//${host}${wsPath}`;
+    // Append JWT token as query parameter for authentication
+    return `${protocol}//${host}${wsPath}?token=${encodeURIComponent(token)}`;
   }
 
   setupEventListeners() {
