@@ -75,6 +75,12 @@ This guide will help you set up the Spell Cast Redux Discord Activity for local 
    - Set install link to "Discord Provided Link"
    - Select installation contexts: "Guild Install", "User Install"
 
+6. Go to "Activities -> URL Mappings"
+   - Root Mapping / -> spellcast2.twkr.io
+   - Proxy Path Mappings
+      * /api -> spellcast2.twkr.io/api
+      * /ws -> spellcast2.twkr.io
+
 ## Step 3: Backend Configuration
 
 1. Navigate to backend directory:
