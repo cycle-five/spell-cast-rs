@@ -10,7 +10,12 @@ pub struct CodeExchangeRequest {
 
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
+    /// JWT token for backend API authentication
     pub access_token: String,
+    /// Discord OAuth access token for Discord SDK authentication
+    /// This is needed for discordSdk.commands.authenticate()
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discord_access_token: Option<String>,
 }
 
 /// Discord user response from /users/@me endpoint
@@ -120,8 +125,12 @@ pub async fn exchange_code(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    // Return both tokens:
+    // - access_token: Our JWT for backend API calls
+    // - discord_access_token: Discord's OAuth token for SDK authentication
     Ok(Json(TokenResponse {
         access_token: jwt_token,
+        discord_access_token: Some(discord_token.access_token),
     }))
 }
 
@@ -325,6 +334,8 @@ pub async fn refresh_token(
 
     Ok(Json(TokenResponse {
         access_token: jwt_token,
+        // Also return the new Discord access token for SDK re-authentication if needed
+        discord_access_token: Some(discord_token.access_token),
     }))
 }
 
@@ -459,11 +470,28 @@ mod tests {
     fn test_token_response_serialization() {
         let response = TokenResponse {
             access_token: "jwt_token_here".to_string(),
+            discord_access_token: Some("discord_token_here".to_string()),
         };
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("access_token"));
         assert!(json.contains("jwt_token_here"));
+        assert!(json.contains("discord_access_token"));
+        assert!(json.contains("discord_token_here"));
+    }
+
+    #[test]
+    fn test_token_response_serialization_without_discord_token() {
+        let response = TokenResponse {
+            access_token: "jwt_token_here".to_string(),
+            discord_access_token: None,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("access_token"));
+        assert!(json.contains("jwt_token_here"));
+        // discord_access_token should be skipped when None
+        assert!(!json.contains("discord_access_token"));
     }
 
     #[test]
@@ -543,6 +571,7 @@ mod tests {
     fn test_token_response_debug() {
         let response = TokenResponse {
             access_token: "secret_token".to_string(),
+            discord_access_token: Some("discord_secret".to_string()),
         };
 
         let debug_str = format!("{:?}", response);
