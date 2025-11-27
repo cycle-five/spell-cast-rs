@@ -120,12 +120,24 @@ class App {
       ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
       : `https://cdn.discordapp.com/embed/avatars/${parseInt(user.id) % 5}.png`;
 
-    container.innerHTML = `
-      <div class="player-card current-user">
-        <img src="${avatarUrl}" alt="${user.username}" class="player-avatar">
-        <span class="player-name">${user.global_name || user.username}</span>
-      </div>
-    `;
+    // Clear container
+    container.innerHTML = '';
+    // Create player card
+    const playerCard = document.createElement('div');
+    playerCard.className = 'player-card current-user';
+    // Create avatar image
+    const img = document.createElement('img');
+    img.src = avatarUrl;
+    img.alt = user.username;
+    img.className = 'player-avatar';
+    // Create name span
+    const span = document.createElement('span');
+    span.className = 'player-name';
+    span.textContent = user.global_name || user.username;
+    // Append elements
+    playerCard.appendChild(img);
+    playerCard.appendChild(span);
+    container.appendChild(playerCard);
   }
 }
 
