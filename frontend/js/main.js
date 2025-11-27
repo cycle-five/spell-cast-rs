@@ -40,7 +40,13 @@ class App {
   getWebSocketUrl() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    return `${protocol}//${host}/ws`;
+
+    // When running inside Discord Activity (discordsays.com), use the proxy path directly
+    // Don't rely on patchUrlMappings for WebSocket to avoid double-patching
+    const isDiscordActivity = host.includes('discordsays.com');
+    const wsPath = isDiscordActivity ? '/.proxy/ws' : '/ws';
+
+    return `${protocol}//${host}${wsPath}`;
   }
 
   setupEventListeners() {

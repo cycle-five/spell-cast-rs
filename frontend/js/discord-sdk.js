@@ -21,17 +21,13 @@ export async function initDiscord() {
     console.log('Discord client is ready');
 
     // Set up URL mappings for Discord Activity proxy
-    // This is required for API calls to work when running inside Discord
+    // This is required for fetch API calls to work when running inside Discord
     // Discord proxies all requests through /.proxy/ prefix
+    // Note: WebSocket URLs are handled directly in main.js to avoid double-patching
     const mappings = [
-      // Map your backend API through Discord's proxy
       {
         prefix: '/api',
-        target: `/.proxy/api`,
-      },
-      {
-        prefix: '/ws',
-        target: `/.proxy/ws`,
+        target: '/.proxy/api',
       },
     ];
 
