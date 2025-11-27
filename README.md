@@ -1,6 +1,6 @@
-# Spell Cast - Discord Activity
+# Spell Cast Redux - Discord Activity
 
-A Rust-powered Discord Activity that recreates the word game Spell Cast. Players connect letters on a 5x5 grid to form words and compete for the highest score!
+A Rust-powered Discord Activity that recreates the word game Spell Cast Redux. Players connect letters on a 5x5 grid to form words and compete for the highest score!
 
 ## Features
 

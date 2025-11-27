@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   server: {
+    allowedHosts: ['spellcast2.twkr.io'],
     port: 3000,
     proxy: {
       '/ws': {

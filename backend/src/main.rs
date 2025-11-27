@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
         // API routes
         .merge(routes::create_routes())
         // Serve frontend at /play and static assets at root
-        .nest_service("/play", frontend_service.clone())
+        //.nest_service("/play", frontend_service.clone())
         .fallback_service(frontend_service)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -129,7 +129,7 @@ async fn main() -> Result<()> {
     tracing::info!("Server listening on {}", addr);
     tracing::info!("WebSocket endpoint: ws://{}/ws", addr);
     tracing::info!("Health check: http://{}/health", addr);
-    tracing::info!("Game frontend: http://{}/play", addr);
+    tracing::info!("Game frontend: http://{}/", addr);
 
     axum::serve(listener, app).await?;
 

@@ -139,9 +139,9 @@ async fn exchange_code_with_discord(
     state: &AppState,
     code: &str,
 ) -> anyhow::Result<DiscordTokenResponse> {
+    let client_id = state.config.discord.client_id.as_str();
+    let client_secret = state.config.discord.client_secret.as_str();
     let params = [
-        ("client_id", state.config.discord.client_id.as_str()),
-        ("client_secret", state.config.discord.client_secret.as_str()),
         ("grant_type", "authorization_code"),
         ("code", code),
         ("redirect_uri", state.config.discord.redirect_uri.as_str()),
@@ -149,7 +149,9 @@ async fn exchange_code_with_discord(
 
     let response = state
         .http_client
-        .post("https://discord.com/api/oauth2/token")
+        .post("https://discord.com/api/v10/oauth2/token")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .basic_auth(client_id, Some(client_secret))
         .form(&params)
         .send()
         .await?;
@@ -162,6 +164,7 @@ async fn exchange_code_with_discord(
     }
 
     let token_response = response.json::<DiscordTokenResponse>().await?;
+    tracing::debug!("Received Discord token response: {:?}", token_response);
     Ok(token_response)
 }
 
@@ -171,7 +174,7 @@ async fn get_discord_user_info(
     http_client: &reqwest::Client,
 ) -> anyhow::Result<DiscordUser> {
     let response = http_client
-        .get("https://discord.com/api/users/@me")
+        .get("https://discord.com/api/v10/users/@me")
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .await?;
@@ -205,7 +208,7 @@ async fn refresh_discord_token(
 
     let response = state
         .http_client
-        .post("https://discord.com/api/oauth2/token")
+        .post("https://discord.com/api/v10/oauth2/token")
         .form(&params)
         .send()
         .await?;
@@ -231,7 +234,7 @@ async fn revoke_discord_token(state: &AppState, token: &str) -> anyhow::Result<(
 
     let response = state
         .http_client
-        .post("https://discord.com/api/oauth2/token/revoke")
+        .post("https://discord.com/api/v10/oauth2/token/revoke")
         .form(&params)
         .send()
         .await?;

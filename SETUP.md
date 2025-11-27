@@ -1,6 +1,6 @@
-# Spell Cast - Setup Guide
+# Spell Cast Redux - Setup Guide
 
-This guide will help you set up the Spell Cast Discord Activity for local development.
+This guide will help you set up the Spell Cast Redux Discord Activity for local development.
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ This guide will help you set up the Spell Cast Discord Activity for local develo
 
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 
-2. Click "New Application" and name it "Spell Cast"
+2. Click "New Application" and name it "Spell Cast Redux"
 
 3. Go to "Activities" tab:
    - Click "Enable Activity"
