@@ -1,6 +1,16 @@
-import { DiscordSDK, patchUrlMappings } from '@discord/embedded-app-sdk';
+import { DiscordSDK } from '@discord/embedded-app-sdk';
 
 let discordSdk = null;
+let isDiscordActivity = false;
+
+// Helper to get the correct API base URL
+export function getApiUrl(path) {
+  // When running inside Discord Activity, use the proxy path directly
+  if (isDiscordActivity) {
+    return `/.proxy${path}`;
+  }
+  return path;
+}
 
 export async function initDiscord() {
   // Get client ID from environment or config
@@ -20,19 +30,9 @@ export async function initDiscord() {
     await discordSdk.ready();
     console.log('Discord client is ready');
 
-    // Set up URL mappings for Discord Activity proxy
-    // This is required for fetch API calls to work when running inside Discord
-    // Discord proxies all requests through /.proxy/ prefix
-    // Note: WebSocket URLs are handled directly in main.js to avoid double-patching
-    const mappings = [
-      {
-        prefix: '/api',
-        target: '/.proxy/api',
-      },
-    ];
-
-    patchUrlMappings(mappings);
-    console.log('URL mappings configured for Discord proxy');
+    // Detect if we're running inside Discord Activity
+    isDiscordActivity = window.location.host.includes('discordsays.com');
+    console.log('Running in Discord Activity:', isDiscordActivity);
 
     // Authorize the app
     const { code } = await discordSdk.commands.authorize({
@@ -51,7 +51,7 @@ export async function initDiscord() {
     // Exchange code for access token via backend
     // The backend exchanges with Discord and returns both the Discord access token
     // (for SDK authentication) and our JWT (for backend API calls)
-    const response = await fetch('/api/auth/exchange', {
+    const response = await fetch(getApiUrl('/api/auth/exchange'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
