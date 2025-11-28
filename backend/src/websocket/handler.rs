@@ -2,7 +2,7 @@ use crate::{
     auth::AuthenticatedUser,
     db,
     websocket::messages::{ClientMessage, LobbyPlayerInfo, LobbyType, ServerMessage},
-    AppState, Lobby, LobbyPlayer,
+    AppState, Lobby, LobbyPlayer, PlayerConnectionState,
 };
 use axum::{
     extract::{
@@ -13,6 +13,7 @@ use axum::{
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::mpsc;
 
 /// WebSocket upgrade handler with authentication
@@ -121,10 +122,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, user: Authentica
         }
     }
 
-    // Remove player from their lobby on disconnect
+    // Mark player as disconnected (don't remove immediately - grace period)
     let context = player_context.lock().await;
     if let Some(lobby_id) = &context.lobby_id {
-        remove_player_from_lobby(&state, lobby_id, user.user_id).await;
+        mark_player_disconnected(&state, lobby_id, user.user_id).await;
     }
 
     tracing::info!(
@@ -155,7 +156,7 @@ async fn fetch_user_avatar(state: &AppState, user_id: i64) -> Option<String> {
     }
 }
 
-/// Add a player to a lobby and broadcast the update
+/// Add a player to a lobby (or reconnect if already present)
 async fn add_player_to_lobby(
     state: &AppState,
     lobby_id: &str,
@@ -163,38 +164,83 @@ async fn add_player_to_lobby(
     avatar_url: Option<String>,
     tx: mpsc::Sender<ServerMessage>,
 ) -> Option<(LobbyType, Option<String>)> {
-    let lobby_player = LobbyPlayer {
-        user_id: user.user_id,
-        username: user.username.clone(),
-        avatar_url,
-        tx,
-    };
+    // Get the lobby
+    let result = if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
+        // Check if player is already in lobby (reconnecting)
+        let player_exists = lobby.players.contains_key(&user.user_id);
 
-    // Get the lobby and add the player
-    if let Some(lobby) = state.lobbies.get(lobby_id) {
-        lobby.players.insert(user.user_id, lobby_player);
+        if player_exists {
+            // Reconnecting! Update their connection state and tx
+            if let Some(mut existing_player) = lobby.players.get_mut(&user.user_id) {
+                let was_disconnected = !existing_player.is_connected();
+                existing_player.tx = tx;
+                existing_player.connection_state = PlayerConnectionState::Connected;
+                drop(existing_player);
 
-        let lobby_type = lobby.lobby_type.clone();
-        let lobby_code = lobby.lobby_code.clone();
+                if was_disconnected {
+                    tracing::info!(
+                        "Player {} ({}) reconnected to lobby {} (type: {:?})",
+                        user.username,
+                        user.user_id,
+                        lobby_id,
+                        lobby.lobby_type
+                    );
+                } else {
+                    tracing::debug!(
+                        "Player {} ({}) refreshed connection to lobby {}",
+                        user.username,
+                        user.user_id,
+                        lobby_id
+                    );
+                }
+            }
 
-        tracing::info!(
-            "Player {} ({}) joined lobby {} (type: {:?})",
-            user.username,
-            user.user_id,
-            lobby_id,
-            lobby_type
-        );
+            // Clear empty_since if lobby was marked as empty
+            lobby.empty_since = None;
 
-        drop(lobby); // Release lock before broadcast
+            let lobby_type = lobby.lobby_type.clone();
+            let lobby_code = lobby.lobby_code.clone();
 
-        // Broadcast updated player list
-        broadcast_lobby_player_list(state, lobby_id).await;
+            Some((lobby_type, lobby_code))
+        } else {
+            // New player joining
+            let lobby_player = LobbyPlayer {
+                user_id: user.user_id,
+                username: user.username.clone(),
+                avatar_url,
+                tx,
+                connection_state: PlayerConnectionState::Connected,
+            };
 
-        Some((lobby_type, lobby_code))
+            lobby.players.insert(user.user_id, lobby_player);
+
+            // Clear empty_since since we have a player now
+            lobby.empty_since = None;
+
+            let lobby_type = lobby.lobby_type.clone();
+            let lobby_code = lobby.lobby_code.clone();
+
+            tracing::info!(
+                "Player {} ({}) joined lobby {} (type: {:?})",
+                user.username,
+                user.user_id,
+                lobby_id,
+                lobby_type
+            );
+
+            Some((lobby_type, lobby_code))
+        }
     } else {
         tracing::warn!("Lobby {} not found when adding player", lobby_id);
         None
+    };
+
+    // Broadcast updated player list (outside the lock)
+    if result.is_some() {
+        broadcast_lobby_player_list(state, lobby_id).await;
     }
+
+    result
 }
 
 /// Get or create a channel lobby
@@ -251,12 +297,47 @@ fn find_lobby_by_code(state: &AppState, lobby_code: &str) -> Option<String> {
         .map(|r| r.value().clone())
 }
 
-/// Remove a player from their lobby and broadcast the update
+/// Mark a player as disconnected (starts grace period)
+async fn mark_player_disconnected(state: &AppState, lobby_id: &str, user_id: i64) {
+    if let Some(lobby) = state.lobbies.get(lobby_id) {
+        if let Some(mut player) = lobby.players.get_mut(&user_id) {
+            player.connection_state = PlayerConnectionState::Disconnected {
+                since: Instant::now(),
+            };
+            tracing::info!(
+                "Player {} marked as disconnected in lobby {} (grace period started)",
+                user_id,
+                lobby_id
+            );
+        }
+
+        // Check if all players are now disconnected
+        let all_disconnected = lobby.players.iter().all(|p| !p.is_connected());
+        drop(lobby);
+
+        if all_disconnected {
+            // Mark lobby as empty (starts lobby grace period)
+            if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
+                if lobby.empty_since.is_none() {
+                    lobby.empty_since = Some(Instant::now());
+                    tracing::info!(
+                        "Lobby {} has no connected players, grace period started",
+                        lobby_id
+                    );
+                }
+            }
+        }
+
+        // Broadcast updated player list to remaining connected players
+        broadcast_lobby_player_list(state, lobby_id).await;
+    }
+}
+
+/// Remove a player from their lobby immediately (e.g., when explicitly leaving)
 async fn remove_player_from_lobby(state: &AppState, lobby_id: &str, user_id: i64) {
     if let Some(lobby) = state.lobbies.get(lobby_id) {
         lobby.players.remove(&user_id);
         let is_empty = lobby.players.is_empty();
-        let lobby_code = lobby.lobby_code.clone();
 
         tracing::info!(
             "Player {} removed from lobby {}",
@@ -264,18 +345,19 @@ async fn remove_player_from_lobby(state: &AppState, lobby_id: &str, user_id: i64
             lobby_id
         );
 
-        drop(lobby); // Release lock
+        drop(lobby);
 
         if is_empty {
-            // Remove empty lobby
-            state.lobbies.remove(lobby_id);
-
-            // Remove from code index if it's a custom lobby
-            if let Some(code) = lobby_code {
-                state.lobby_code_index.remove(&code);
+            // Mark lobby as empty (starts grace period for cleanup)
+            if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
+                if lobby.empty_since.is_none() {
+                    lobby.empty_since = Some(Instant::now());
+                    tracing::info!(
+                        "Lobby {} is now empty, grace period started",
+                        lobby_id
+                    );
+                }
             }
-
-            tracing::info!("Empty lobby removed: {}", lobby_id);
         } else {
             // Broadcast updated player list to remaining clients
             broadcast_lobby_player_list(state, lobby_id).await;
@@ -283,12 +365,14 @@ async fn remove_player_from_lobby(state: &AppState, lobby_id: &str, user_id: i64
     }
 }
 
-/// Broadcast the current lobby player list to all clients in a lobby
+/// Broadcast the current lobby player list to all connected clients in a lobby
 async fn broadcast_lobby_player_list(state: &AppState, lobby_id: &str) {
     if let Some(lobby) = state.lobbies.get(lobby_id) {
+        // Only include connected players in the list
         let players: Vec<LobbyPlayerInfo> = lobby
             .players
             .iter()
+            .filter(|p| p.is_connected())
             .map(|entry| LobbyPlayerInfo {
                 user_id: entry.user_id.to_string(),
                 username: entry.username.clone(),
@@ -303,8 +387,11 @@ async fn broadcast_lobby_player_list(state: &AppState, lobby_id: &str) {
             lobby_code,
         };
 
+        // Send to all connected players
         for entry in lobby.players.iter() {
-            let _ = entry.tx.send(message.clone()).await;
+            if entry.is_connected() {
+                let _ = entry.tx.send(message.clone()).await;
+            }
         }
     }
 }
@@ -344,7 +431,7 @@ async fn handle_client_message(
                 context.lobby_id = Some(lobby_id.clone());
             }
 
-            // Fetch avatar and add to lobby
+            // Fetch avatar and add to lobby (handles reconnection)
             let avatar_url = fetch_user_avatar(state, user.user_id).await;
             if let Some((lobby_type, lobby_code)) =
                 add_player_to_lobby(state, &lobby_id, user, avatar_url, tx.clone()).await

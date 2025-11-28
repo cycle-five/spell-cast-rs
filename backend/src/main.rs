@@ -25,7 +25,22 @@ use uuid::Uuid;
 
 use config::Config;
 use dictionary::Dictionary;
+use std::time::{Duration, Instant};
 use websocket::messages::{LobbyType, ServerMessage};
+
+/// Grace period before removing disconnected players (seconds)
+pub const PLAYER_DISCONNECT_GRACE_PERIOD: Duration = Duration::from_secs(60);
+/// Grace period before removing empty lobbies (seconds)
+pub const LOBBY_EMPTY_GRACE_PERIOD: Duration = Duration::from_secs(120);
+
+/// Connection state for a lobby player
+#[derive(Debug, Clone)]
+pub enum PlayerConnectionState {
+    /// Player is actively connected
+    Connected,
+    /// Player disconnected at the given time, waiting for reconnection
+    Disconnected { since: Instant },
+}
 
 /// Information about a connected lobby player
 #[derive(Debug, Clone)]
@@ -34,6 +49,13 @@ pub struct LobbyPlayer {
     pub username: String,
     pub avatar_url: Option<String>,
     pub tx: mpsc::Sender<ServerMessage>,
+    pub connection_state: PlayerConnectionState,
+}
+
+impl LobbyPlayer {
+    pub fn is_connected(&self) -> bool {
+        matches!(self.connection_state, PlayerConnectionState::Connected)
+    }
 }
 
 /// A game lobby that players can join
@@ -50,7 +72,9 @@ pub struct Lobby {
     /// Players in the lobby, keyed by user_id
     pub players: DashMap<i64, LobbyPlayer>,
     /// When the lobby was created
-    pub created_at: std::time::Instant,
+    pub created_at: Instant,
+    /// When the lobby became empty (for cleanup grace period)
+    pub empty_since: Option<Instant>,
 }
 
 impl Lobby {
@@ -63,7 +87,8 @@ impl Lobby {
             channel_id: Some(channel_id),
             guild_id,
             players: DashMap::new(),
-            created_at: std::time::Instant::now(),
+            created_at: Instant::now(),
+            empty_since: None,
         }
     }
 
@@ -77,8 +102,19 @@ impl Lobby {
             channel_id: None,
             guild_id: None,
             players: DashMap::new(),
-            created_at: std::time::Instant::now(),
+            created_at: Instant::now(),
+            empty_since: None,
         }
+    }
+
+    /// Count of actively connected players (excludes disconnected ones in grace period)
+    pub fn connected_player_count(&self) -> usize {
+        self.players.iter().filter(|p| p.is_connected()).count()
+    }
+
+    /// Check if lobby has any players (connected or disconnected in grace period)
+    pub fn has_any_players(&self) -> bool {
+        !self.players.is_empty()
     }
 }
 
@@ -176,6 +212,12 @@ async fn main() -> Result<()> {
         http_client,
     });
 
+    // Spawn background task to clean up stale players and empty lobbies
+    let cleanup_state = state.clone();
+    tokio::spawn(async move {
+        lobby_cleanup_task(cleanup_state).await;
+    });
+
     // Configure CORS
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -210,4 +252,66 @@ async fn main() -> Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+/// Background task that periodically cleans up stale disconnected players and empty lobbies
+async fn lobby_cleanup_task(state: Arc<AppState>) {
+    let mut interval = tokio::time::interval(Duration::from_secs(15));
+
+    loop {
+        interval.tick().await;
+
+        let now = Instant::now();
+        let mut lobbies_to_remove = Vec::new();
+        let mut players_to_remove: Vec<(String, i64)> = Vec::new();
+
+        // Scan all lobbies
+        for lobby_ref in state.lobbies.iter() {
+            let lobby_id = lobby_ref.key().clone();
+            let lobby = lobby_ref.value();
+
+            // Find players that have exceeded the grace period
+            for player_ref in lobby.players.iter() {
+                if let PlayerConnectionState::Disconnected { since } = &player_ref.connection_state
+                {
+                    if now.duration_since(*since) > PLAYER_DISCONNECT_GRACE_PERIOD {
+                        players_to_remove.push((lobby_id.clone(), player_ref.user_id));
+                    }
+                }
+            }
+
+            // Check if lobby should be removed (empty beyond grace period)
+            if let Some(empty_since) = lobby.empty_since {
+                if now.duration_since(empty_since) > LOBBY_EMPTY_GRACE_PERIOD {
+                    lobbies_to_remove.push(lobby_id.clone());
+                }
+            }
+        }
+
+        // Remove stale players
+        for (lobby_id, user_id) in players_to_remove {
+            if let Some(lobby) = state.lobbies.get(&lobby_id) {
+                lobby.players.remove(&user_id);
+                tracing::info!(
+                    "Removed stale disconnected player {} from lobby {} (grace period expired)",
+                    user_id,
+                    lobby_id
+                );
+            }
+        }
+
+        // Remove stale lobbies
+        for lobby_id in lobbies_to_remove {
+            if let Some((_, lobby)) = state.lobbies.remove(&lobby_id) {
+                // Remove from code index if custom lobby
+                if let Some(code) = lobby.lobby_code {
+                    state.lobby_code_index.remove(&code);
+                }
+                tracing::info!(
+                    "Removed empty lobby {} (grace period expired)",
+                    lobby_id
+                );
+            }
+        }
+    }
 }
