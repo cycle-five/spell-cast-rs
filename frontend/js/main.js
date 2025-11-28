@@ -228,9 +228,12 @@ class App {
       img.src = avatarUrl;
       img.alt = player.username;
       img.className = 'player-avatar';
-      // Handle image load errors by falling back to default avatar
+      // Handle image load errors by falling back to default avatar, only once
       img.onerror = () => {
-        img.src = `https://cdn.discordapp.com/embed/avatars/${parseInt(player.user_id) % 5}.png`;
+        if (!img.dataset.fallback) {
+          img.dataset.fallback = 'true';
+          img.src = `https://cdn.discordapp.com/embed/avatars/${parseInt(player.user_id) % 5}.png`;
+        }
       };
 
       const span = document.createElement('span');
