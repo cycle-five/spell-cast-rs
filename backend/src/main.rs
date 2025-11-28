@@ -318,10 +318,64 @@ async fn lobby_cleanup_task(state: Arc<AppState>) {
                 if let Some(code) = lobby.lobby_code {
                     state.lobby_code_index.remove(&code);
                 }
-                tracing::info!(
-                    "Removed empty lobby {} (grace period expired)",
-                    lobby_id
+                tracing::info!("Removed empty lobby {} (grace period expired)", lobby_id);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Allowed charset for lobby codes - excludes I, O, 0, 1 for readability
+    const CHARSET: &str = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+    #[test]
+    fn test_generate_lobby_code_length() {
+        // Generate multiple codes and verify they are always 6 characters
+        for _ in 0..100 {
+            let code = generate_lobby_code();
+            assert_eq!(
+                code.len(),
+                6,
+                "Generated lobby code '{}' should be exactly 6 characters",
+                code
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_lobby_code_charset() {
+        // Generate multiple codes and verify all characters are from allowed charset
+        for _ in 0..100 {
+            let code = generate_lobby_code();
+            for c in code.chars() {
+                assert!(
+                    CHARSET.contains(c),
+                    "Character '{}' in code '{}' is not in allowed charset '{}'",
+                    c,
+                    code,
+                    CHARSET
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn test_generate_lobby_code_uppercase() {
+        // Generate multiple codes and verify all alphabetic characters are uppercase
+        for _ in 0..100 {
+            let code = generate_lobby_code();
+            for c in code.chars() {
+                if c.is_alphabetic() {
+                    assert!(
+                        c.is_uppercase(),
+                        "Character '{}' in code '{}' should be uppercase",
+                        c,
+                        code
+                    );
+                }
             }
         }
     }
