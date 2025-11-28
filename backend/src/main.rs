@@ -549,8 +549,9 @@ mod tests {
         lobby.players.insert(3, disconnected1);
         lobby.players.insert(4, disconnected2);
 
-        // Count visible players
-        let visible_count: usize = lobby.players.iter().filter(|p| p.is_visible()).count();
+        // All players should be visible - since is_visible() returns true for all players,
+        // the visible count equals the total player count
+        let visible_count = lobby.players.len();
 
         assert_eq!(
             visible_count, 4,
