@@ -1,9 +1,10 @@
 # Spell Cast Redux - Discord Activity
 
-A Rust-powered Discord Activity that recreates the word game Spell Cast Redux. Players connect letters on a 5x5 grid to form words and compete for the highest score!
+A Rust-powered Discord Activity that recreates the word game Spell Cast. Players connect letters on a 5x5 grid to form words and compete for the highest score!
 
 ## Features
 
+- **Flexible Lobby**: Simple, robust lobby works on / off platform
 - **Multiplayer Mode**: 2-6 players, 5 rounds, highest score wins
 - **2v2 Team Mode**: Team-based competitive gameplay
 - **Adventure Mode**: 50 single-player levels with AI opponents
@@ -38,17 +39,20 @@ spell-cast-rs/
 │   │   ├── dictionary/# Word validation
 │   │   └── utils/     # Utilities
 │   └── migrations/    # Database migrations
+├── docs/              # Extensive (ostensibly) documentation
 └── frontend/          # Web frontend
     ├── js/            # JavaScript modules
     ├── styles/        # CSS stylesheets
     └── assets/        # Images, sounds, fonts
 ```
 
+For a more detailed treatment see [PROJECT_STRUCTURE.md](./docs/PROJECT_STRUCTURE.md)
+
 ## Setup
 
 ### Prerequisites
 
-- Rust 1.75+ (`rustup`)
+- Rust Nightly 1.91+ (`rustup install nightly`)
 - PostgreSQL 14+
 - Node.js 18+ (for frontend dependencies)
 - Discord Application (from Discord Developer Portal)
@@ -118,6 +122,8 @@ spell-cast-rs/
    - Copy Client ID and Client Secret to `.env`
    - Required scopes: `identify`, `guilds`
 
+For a more detailed treatment see [SETUP.md](./docs/SETUP.md)
+
 ## Development
 
 ### Database Migrations
@@ -171,7 +177,7 @@ npm run build
 - `word_scored` - Valid word scored
 - `game_over` - Game finished
 
-See [API.md](./API.md) for full documentation.
+For a more detailed treatment of this see [API.md](./docs/API.md)
 
 ## License
 
@@ -179,4 +185,4 @@ GPLv3
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or pull request.
+I love feedback and contributions, please don't hesitate to open a PR or an issue.

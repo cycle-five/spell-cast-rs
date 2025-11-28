@@ -1,6 +1,9 @@
-use crate::models::{Grid, GridCell, Multiplier};
-use crate::utils::letters::{get_cumulative_distribution, get_letter_value};
 use rand::Rng;
+
+use crate::{
+    models::{Grid, GridCell, Multiplier},
+    utils::letters::{get_cumulative_distribution, get_letter_value},
+};
 
 pub struct GridGenerator;
 

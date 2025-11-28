@@ -1,9 +1,5 @@
-use crate::{
-    auth::AuthenticatedUser,
-    db,
-    websocket::messages::{ClientMessage, LobbyPlayerInfo, LobbyType, ServerMessage},
-    AppState, Lobby, LobbyPlayer, PlayerConnectionState,
-};
+use std::{sync::Arc, time::Instant};
+
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -12,9 +8,14 @@ use axum::{
     response::IntoResponse,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
-use std::sync::Arc;
-use std::time::Instant;
 use tokio::sync::mpsc;
+
+use crate::{
+    auth::AuthenticatedUser,
+    db,
+    websocket::messages::{ClientMessage, LobbyPlayerInfo, LobbyType, ServerMessage},
+    AppState, Lobby, LobbyPlayer, PlayerConnectionState,
+};
 
 /// WebSocket upgrade handler with authentication
 pub async fn handle_websocket(

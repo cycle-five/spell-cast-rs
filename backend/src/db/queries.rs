@@ -1,9 +1,10 @@
+use sqlx::{PgPool, Result};
+use uuid::Uuid;
+
 use crate::{
     encryption,
     models::{Game, GameBoard, GameMove, GamePlayer, User, UserGuildProfile},
 };
-use sqlx::{PgPool, Result};
-use uuid::Uuid;
 
 // User queries
 pub async fn get_user(pool: &PgPool, user_id: i64, encryption_key: &str) -> Result<Option<User>> {

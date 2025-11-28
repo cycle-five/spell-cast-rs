@@ -1,5 +1,4 @@
-use sqlx::postgres::PgPoolOptions;
-use sqlx::{PgPool, Result};
+use sqlx::{postgres::PgPoolOptions, PgPool, Result};
 
 pub mod queries;
 

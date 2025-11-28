@@ -1,6 +1,6 @@
+use std::{collections::HashSet, path::Path};
+
 use anyhow::Result;
-use std::collections::HashSet;
-use std::path::Path;
 use tokio::fs;
 
 pub struct Dictionary {

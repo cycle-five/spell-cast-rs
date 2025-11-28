@@ -9,11 +9,17 @@ mod routes;
 mod utils;
 mod websocket;
 
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
 use anyhow::Result;
 use axum::{routing::get, Router};
+use config::Config;
 use dashmap::DashMap;
+use dictionary::Dictionary;
 use sqlx::PgPool;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -22,10 +28,6 @@ use tower_http::{
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
-
-use config::Config;
-use dictionary::Dictionary;
-use std::time::{Duration, Instant};
 use websocket::messages::{LobbyType, ServerMessage};
 
 /// Grace period before removing disconnected players (seconds)

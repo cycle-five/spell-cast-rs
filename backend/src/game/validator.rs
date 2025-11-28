@@ -1,5 +1,6 @@
-use crate::models::{Grid, Position};
 use std::collections::HashSet;
+
+use crate::models::{Grid, Position};
 
 pub struct WordValidator {
     dictionary: HashSet<String>,
