@@ -1,5 +1,5 @@
 # Rust formatting configuration
-# Uses stable rustfmt options compatible with Rust stable toolchain
+# Some options require nightly rustfmt (cargo +nightly fmt)
 
 # Maximum line width
 max_width = 100
@@ -12,6 +12,12 @@ hard_tabs = false
 
 # Edition to use for parsing
 edition = "2021"
+
+# Merge imports from the same module into a single use statement (nightly)
+imports_granularity = "Crate"
+
+# Group imports by type: std, external crates, then crate-local (nightly)
+group_imports = "StdExternalCrate"
 
 # Reorder imports alphabetically
 reorder_imports = true
