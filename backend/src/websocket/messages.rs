@@ -25,6 +25,10 @@ pub enum ClientMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
+    /// Sent to all connected clients when the lobby player list changes
+    LobbyPlayerList {
+        players: Vec<LobbyPlayerInfo>,
+    },
     GameCreated {
         game_id: String,
     },
@@ -80,6 +84,13 @@ pub struct PlayerInfo {
     pub avatar_url: Option<String>,
     pub score: i32,
     pub team: Option<i32>,
+}
+
+/// Simplified player info for lobby display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LobbyPlayerInfo {
+    pub user_id: String,
+    pub username: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

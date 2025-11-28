@@ -1,7 +1,7 @@
 use crate::{
     auth::AuthenticatedUser,
-    websocket::messages::{ClientMessage, ServerMessage},
-    AppState,
+    websocket::messages::{ClientMessage, LobbyPlayerInfo, ServerMessage},
+    AppState, LobbyPlayer,
 };
 use axum::{
     extract::{
@@ -39,6 +39,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, user: Authentica
         user.user_id
     );
 
+    // Add player to lobby
+    let lobby_player = LobbyPlayer {
+        user_id: user.user_id,
+        username: user.username.clone(),
+        tx: tx.clone(),
+    };
+    state.lobby_players.insert(user.user_id, lobby_player);
+
+    // Broadcast updated player list to all connected clients
+    broadcast_lobby_player_list(&state).await;
+
     // Spawn a task to send messages to the client
     let mut send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
@@ -57,13 +68,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, user: Authentica
 
     // Handle incoming messages from the client
     let user_for_recv = user.clone();
+    let state_for_recv = state.clone();
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
                 Message::Text(text) => match serde_json::from_str::<ClientMessage>(&text) {
                     Ok(client_msg) => {
                         if let Err(e) =
-                            handle_client_message(client_msg, &state, &tx, &user_for_recv).await
+                            handle_client_message(client_msg, &state_for_recv, &tx, &user_for_recv)
+                                .await
                         {
                             tracing::error!("Error handling message: {}", e);
                             let error_msg = ServerMessage::Error {
@@ -103,11 +116,35 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, user: Authentica
         }
     }
 
+    // Remove player from lobby
+    state.lobby_players.remove(&user.user_id);
+
+    // Broadcast updated player list after disconnect
+    broadcast_lobby_player_list(&state).await;
+
     tracing::info!(
         "WebSocket connection closed for user: {} ({})",
         user.username,
         user.user_id
     );
+}
+
+/// Broadcast the current lobby player list to all connected clients
+async fn broadcast_lobby_player_list(state: &AppState) {
+    let players: Vec<LobbyPlayerInfo> = state
+        .lobby_players
+        .iter()
+        .map(|entry| LobbyPlayerInfo {
+            user_id: entry.user_id.to_string(),
+            username: entry.username.clone(),
+        })
+        .collect();
+
+    let message = ServerMessage::LobbyPlayerList { players };
+
+    for entry in state.lobby_players.iter() {
+        let _ = entry.tx.send(message.clone()).await;
+    }
 }
 
 /// Handle individual client messages

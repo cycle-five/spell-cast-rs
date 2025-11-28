@@ -17,9 +17,6 @@ class App {
       const discordResult = await initDiscord();
       console.log('Discord SDK initialized:', discordResult);
 
-      // Display the authenticated user in the lobby
-      this.displayCurrentUser(discordResult.user);
-
       // Initialize WebSocket connection with JWT token for authentication
       const wsUrl = this.getWebSocketUrl(discordResult.access_token);
       this.gameClient = new GameClient(wsUrl);
@@ -80,6 +77,11 @@ class App {
       this.showScreen('lobby');
     });
 
+    // Listen for lobby player list updates
+    this.gameClient.on('lobby_player_list', (data) => {
+      this.displayLobbyPlayers(data.players);
+    });
+
     // Listen for game state changes
     this.gameClient.on('game_started', () => {
       this.showScreen('game');
@@ -112,32 +114,34 @@ class App {
     }, 5000);
   }
 
-  displayCurrentUser(user) {
+  displayLobbyPlayers(players) {
     const container = document.getElementById('players-container');
-    if (!container || !user) return;
-
-    const avatarUrl = user.avatar
-      ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
-      : `https://cdn.discordapp.com/embed/avatars/${parseInt(user.id) % 5}.png`;
+    if (!container) return;
 
     // Clear container
     container.innerHTML = '';
-    // Create player card
-    const playerCard = document.createElement('div');
-    playerCard.className = 'player-card current-user';
-    // Create avatar image
-    const img = document.createElement('img');
-    img.src = avatarUrl;
-    img.alt = user.username;
-    img.className = 'player-avatar';
-    // Create name span
-    const span = document.createElement('span');
-    span.className = 'player-name';
-    span.textContent = user.global_name || user.username;
-    // Append elements
-    playerCard.appendChild(img);
-    playerCard.appendChild(span);
-    container.appendChild(playerCard);
+
+    // Create a player card for each player
+    players.forEach(player => {
+      // Discord avatar URL - use default if no specific avatar
+      const avatarUrl = `https://cdn.discordapp.com/embed/avatars/${parseInt(player.user_id) % 5}.png`;
+
+      const playerCard = document.createElement('div');
+      playerCard.className = 'player-card';
+
+      const img = document.createElement('img');
+      img.src = avatarUrl;
+      img.alt = player.username;
+      img.className = 'player-avatar';
+
+      const span = document.createElement('span');
+      span.className = 'player-name';
+      span.textContent = player.username;
+
+      playerCard.appendChild(img);
+      playerCard.appendChild(span);
+      container.appendChild(playerCard);
+    });
   }
 }
 

@@ -14,6 +14,7 @@ use axum::{routing::get, Router};
 use dashmap::DashMap;
 use sqlx::PgPool;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 use tower_http::{
     cors::{Any, CorsLayer},
     services::ServeDir,
@@ -24,6 +25,15 @@ use uuid::Uuid;
 
 use config::Config;
 use dictionary::Dictionary;
+use websocket::messages::ServerMessage;
+
+/// Information about a connected lobby player
+#[derive(Debug, Clone)]
+pub struct LobbyPlayer {
+    pub user_id: i64,
+    pub username: String,
+    pub tx: mpsc::Sender<ServerMessage>,
+}
 
 /// Application state shared across all handlers
 pub struct AppState {
@@ -31,6 +41,7 @@ pub struct AppState {
     pub db: PgPool,
     pub dictionary: Dictionary,
     pub active_games: DashMap<Uuid, GameSession>,
+    pub lobby_players: DashMap<i64, LobbyPlayer>,
     pub http_client: reqwest::Client,
 }
 
@@ -97,6 +108,7 @@ async fn main() -> Result<()> {
         db,
         dictionary,
         active_games: DashMap::new(),
+        lobby_players: DashMap::new(),
         http_client,
     });
 
