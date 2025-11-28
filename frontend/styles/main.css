@@ -354,3 +354,82 @@ button {
   border-radius: var(--radius);
   margin-bottom: 2rem;
 }
+
+/* Custom Lobby Controls */
+.custom-lobby-controls {
+  background: var(--surface);
+  padding: 1.5rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+}
+
+.custom-lobby-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.or-divider {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.join-lobby-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.lobby-code-input {
+  background: var(--surface-light);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  padding: 0.75rem 1rem;
+  font-size: 1.1rem;
+  font-family: monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.2rem;
+  width: 140px;
+  text-align: center;
+}
+
+.lobby-code-input::placeholder {
+  color: var(--text-secondary);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.lobby-code-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.secondary-button {
+  background: var(--surface-light);
+  color: var(--text-primary);
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  border: 2px solid var(--border);
+}
+
+.secondary-button:hover {
+  border-color: var(--primary-color);
+  background: var(--surface);
+}
+
+/* Lobby Code Display */
+.lobby-code-display {
+  background: linear-gradient(135deg, var(--primary-color), #7289DA);
+  color: white;
+  padding: 1rem 1.5rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 600;
+  font-family: monospace;
+  letter-spacing: 0.3rem;
+  box-shadow: 0 4px 12px var(--shadow);
+}

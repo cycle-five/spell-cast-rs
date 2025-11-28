@@ -89,6 +89,39 @@ export class GameClient {
     }
   }
 
+  // Lobby actions
+
+  // Join a channel-based lobby (default for Discord activities)
+  joinChannelLobby(channelId, guildId = null) {
+    this.send({
+      type: 'join_channel_lobby',
+      channel_id: channelId,
+      guild_id: guildId,
+    });
+  }
+
+  // Create a new custom lobby with a shareable code
+  createCustomLobby() {
+    this.send({
+      type: 'create_custom_lobby',
+    });
+  }
+
+  // Join an existing custom lobby by its code
+  joinCustomLobby(lobbyCode) {
+    this.send({
+      type: 'join_custom_lobby',
+      lobby_code: lobbyCode,
+    });
+  }
+
+  // Leave the current lobby
+  leaveLobby() {
+    this.send({
+      type: 'leave_lobby',
+    });
+  }
+
   // Game actions
   createGame(mode) {
     this.send({

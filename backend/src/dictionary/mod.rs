@@ -1,7 +1,7 @@
+use anyhow::Result;
 use std::collections::HashSet;
 use std::path::Path;
 use tokio::fs;
-use anyhow::Result;
 
 pub struct Dictionary {
     words: HashSet<String>,
