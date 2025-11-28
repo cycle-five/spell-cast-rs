@@ -122,7 +122,7 @@ For a more detailed treatment see [PROJECT_STRUCTURE.md](./docs/PROJECT_STRUCTUR
    - Copy Client ID and Client Secret to `.env`
    - Required scopes: `identify`, `guilds`
 
-For a more detailed treatment see [PROJECT_STRUCTURE.md](./docs/SETUP.md)
+For a more detailed treatment see [SETUP.md](./docs/SETUP.md)
 
 ## Development
 
