@@ -1,7 +1,9 @@
-use crate::{auth, db, AppState};
+use std::sync::Arc;
+
 use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+
+use crate::{auth, db, AppState};
 
 #[derive(Debug, Deserialize)]
 pub struct CodeExchangeRequest {

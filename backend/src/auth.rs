@@ -1,10 +1,11 @@
+use std::sync::Arc;
+
 use axum::{
     extract::{FromRef, FromRequestParts},
     http::{header, request::Parts, StatusCode},
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use crate::AppState;
 
