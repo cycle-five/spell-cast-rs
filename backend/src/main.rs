@@ -32,6 +32,10 @@ use websocket::messages::{LobbyType, ServerMessage};
 pub const PLAYER_DISCONNECT_GRACE_PERIOD: Duration = Duration::from_secs(60);
 /// Grace period before removing empty lobbies (seconds)
 pub const LOBBY_EMPTY_GRACE_PERIOD: Duration = Duration::from_secs(120);
+/// Allowed characters for lobby codes - excludes I, O, 0, 1 for readability
+pub const LOBBY_CODE_CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/// Length of generated lobby codes
+pub const LOBBY_CODE_LENGTH: usize = 6;
 
 /// Connection state for a lobby player
 #[derive(Debug, Clone)]
@@ -131,12 +135,11 @@ impl Lobby {
 /// Generate a short, readable lobby code (6 alphanumeric characters)
 fn generate_lobby_code() -> String {
     use rand::Rng;
-    const CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Excludes I, O, 0, 1 for readability
     let mut rng = rand::rng();
-    (0..6)
+    (0..LOBBY_CODE_LENGTH)
         .map(|_| {
-            let idx = rng.random_range(0..CHARSET.len());
-            CHARSET[idx] as char
+            let idx = rng.random_range(0..LOBBY_CODE_CHARSET.len());
+            LOBBY_CODE_CHARSET[idx] as char
         })
         .collect()
 }
@@ -324,6 +327,60 @@ async fn lobby_cleanup_task(state: Arc<AppState>) {
                     "Removed empty lobby {} (grace period expired)",
                     lobby_id
                 );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_lobby_code_length() {
+        // Generate multiple codes and verify they are always 6 characters
+        for _ in 0..100 {
+            let code = generate_lobby_code();
+            assert_eq!(
+                code.len(),
+                LOBBY_CODE_LENGTH,
+                "Generated lobby code '{}' should be exactly {} characters",
+                code,
+                LOBBY_CODE_LENGTH
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_lobby_code_charset() {
+        // Generate multiple codes and verify all characters are from allowed charset
+        for _ in 0..100 {
+            let code = generate_lobby_code();
+            for c in code.chars() {
+                assert!(
+                    LOBBY_CODE_CHARSET.contains(&(c as u8)),
+                    "Character '{}' in code '{}' is not in allowed charset",
+                    c,
+                    code
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_generate_lobby_code_uppercase() {
+        // Generate multiple codes and verify all alphabetic characters are uppercase
+        for _ in 0..100 {
+            let code = generate_lobby_code();
+            for c in code.chars() {
+                if c.is_alphabetic() {
+                    assert!(
+                        c.is_uppercase(),
+                        "Character '{}' in code '{}' should be uppercase",
+                        c,
+                        code
+                    );
+                }
             }
         }
     }
