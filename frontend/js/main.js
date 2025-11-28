@@ -7,6 +7,8 @@ class App {
     this.gameClient = null;
     this.gameUI = null;
     this.currentScreen = 'loading';
+    this.channelId = null;
+    this.guildId = null;
   }
 
   async init() {
@@ -16,6 +18,10 @@ class App {
       // Initialize Discord SDK
       const discordResult = await initDiscord();
       console.log('Discord SDK initialized:', discordResult);
+
+      // Store channel/guild context for lobby scoping
+      this.channelId = discordResult.channelId;
+      this.guildId = discordResult.guildId;
 
       // Initialize WebSocket connection with JWT token for authentication
       const wsUrl = this.getWebSocketUrl(discordResult.access_token);
@@ -77,6 +83,16 @@ class App {
       this.showScreen('lobby');
     });
 
+    // Join lobby when WebSocket connects
+    this.gameClient.on('connected', () => {
+      console.log('WebSocket connected, joining lobby for channel:', this.channelId);
+      if (this.channelId) {
+        this.gameClient.joinLobby(this.channelId, this.guildId);
+      } else {
+        console.warn('No channel ID available, cannot join lobby');
+      }
+    });
+
     // Listen for lobby player list updates
     this.gameClient.on('lobby_player_list', (data) => {
       this.displayLobbyPlayers(data.players);
@@ -123,8 +139,9 @@ class App {
 
     // Create a player card for each player
     players.forEach(player => {
-      // Discord avatar URL - use default if no specific avatar
-      const avatarUrl = `https://cdn.discordapp.com/embed/avatars/${parseInt(player.user_id) % 5}.png`;
+      // Use actual avatar_url from server, fallback to Discord default avatar
+      const avatarUrl = player.avatar_url ||
+        `https://cdn.discordapp.com/embed/avatars/${parseInt(player.user_id) % 5}.png`;
 
       const playerCard = document.createElement('div');
       playerCard.className = 'player-card';
@@ -133,6 +150,10 @@ class App {
       img.src = avatarUrl;
       img.alt = player.username;
       img.className = 'player-avatar';
+      // Handle image load errors by falling back to default avatar
+      img.onerror = () => {
+        img.src = `https://cdn.discordapp.com/embed/avatars/${parseInt(player.user_id) % 5}.png`;
+      };
 
       const span = document.createElement('span');
       span.className = 'player-name';

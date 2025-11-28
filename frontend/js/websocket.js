@@ -89,6 +89,15 @@ export class GameClient {
     }
   }
 
+  // Lobby actions
+  joinLobby(channelId, guildId = null) {
+    this.send({
+      type: 'join_lobby',
+      channel_id: channelId,
+      guild_id: guildId,
+    });
+  }
+
   // Game actions
   createGame(mode) {
     this.send({

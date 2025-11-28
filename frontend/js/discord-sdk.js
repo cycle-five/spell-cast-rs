@@ -76,12 +76,22 @@ export async function initDiscord() {
 
     console.log('Authenticated with Discord:', auth.user);
 
+    // Get channel and guild context from the SDK
+    // These are available after the SDK is ready
+    const channelId = discordSdk.channelId;
+    const guildId = discordSdk.guildId;
+
+    console.log('Discord context - Channel:', channelId, 'Guild:', guildId);
+
     return {
       sdk: discordSdk,
       user: auth.user,
       // Return our JWT for backend API authentication
       access_token,
       discord_access_token,
+      // Return channel/guild context for lobby scoping
+      channelId,
+      guildId,
     };
   } catch (error) {
     console.error('Discord initialization error:', error);
@@ -97,6 +107,9 @@ export async function initDiscord() {
           discriminator: '0000',
         },
         access_token: 'dev_token',
+        // Use a dev channel ID for local testing
+        channelId: 'dev_channel_123',
+        guildId: 'dev_guild_456',
       };
     }
 

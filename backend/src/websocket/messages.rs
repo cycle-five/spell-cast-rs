@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
+    /// Sent when joining a lobby - provides channel context for lobby scoping
+    JoinLobby {
+        channel_id: String,
+        /// Guild ID is optional for DM-based activities
+        guild_id: Option<String>,
+    },
     CreateGame {
         mode: GameMode,
     },
@@ -91,6 +97,7 @@ pub struct PlayerInfo {
 pub struct LobbyPlayerInfo {
     pub user_id: String,
     pub username: String,
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

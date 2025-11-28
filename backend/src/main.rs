@@ -32,6 +32,9 @@ use websocket::messages::ServerMessage;
 pub struct LobbyPlayer {
     pub user_id: i64,
     pub username: String,
+    pub avatar_url: Option<String>,
+    pub channel_id: String,
+    pub guild_id: Option<String>,
     pub tx: mpsc::Sender<ServerMessage>,
 }
 
@@ -41,7 +44,8 @@ pub struct AppState {
     pub db: PgPool,
     pub dictionary: Dictionary,
     pub active_games: DashMap<Uuid, GameSession>,
-    pub lobby_players: DashMap<i64, LobbyPlayer>,
+    /// Lobbies keyed by channel_id, containing players keyed by user_id
+    pub channel_lobbies: DashMap<String, DashMap<i64, LobbyPlayer>>,
     pub http_client: reqwest::Client,
 }
 
@@ -108,7 +112,7 @@ async fn main() -> Result<()> {
         db,
         dictionary,
         active_games: DashMap::new(),
-        lobby_players: DashMap::new(),
+        channel_lobbies: DashMap::new(),
         http_client,
     });
 
