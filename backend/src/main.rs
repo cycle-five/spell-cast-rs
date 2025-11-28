@@ -303,6 +303,8 @@ async fn lobby_cleanup_task(state: Arc<AppState>) {
         for (lobby_id, user_id) in players_to_remove {
             if let Some(lobby) = state.lobbies.get(&lobby_id) {
                 lobby.players.remove(&user_id);
+                // Broadcast updated player list to all connected clients
+                websocket::broadcast_lobby_player_list(lobby, &state).await;
                 tracing::info!(
                     "Removed stale disconnected player {} from lobby {} (grace period expired)",
                     user_id,
