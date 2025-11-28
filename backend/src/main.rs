@@ -32,6 +32,10 @@ use websocket::messages::{LobbyType, ServerMessage};
 pub const PLAYER_DISCONNECT_GRACE_PERIOD: Duration = Duration::from_secs(60);
 /// Grace period before removing empty lobbies (seconds)
 pub const LOBBY_EMPTY_GRACE_PERIOD: Duration = Duration::from_secs(120);
+/// Allowed characters for lobby codes - excludes I, O, 0, 1 for readability
+pub const LOBBY_CODE_CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/// Length of generated lobby codes
+pub const LOBBY_CODE_LENGTH: usize = 6;
 
 /// Connection state for a lobby player
 #[derive(Debug, Clone)]
@@ -131,12 +135,11 @@ impl Lobby {
 /// Generate a short, readable lobby code (6 alphanumeric characters)
 fn generate_lobby_code() -> String {
     use rand::Rng;
-    const CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Excludes I, O, 0, 1 for readability
     let mut rng = rand::rng();
-    (0..6)
+    (0..LOBBY_CODE_LENGTH)
         .map(|_| {
-            let idx = rng.random_range(0..CHARSET.len());
-            CHARSET[idx] as char
+            let idx = rng.random_range(0..LOBBY_CODE_CHARSET.len());
+            LOBBY_CODE_CHARSET[idx] as char
         })
         .collect()
 }
@@ -328,9 +331,6 @@ async fn lobby_cleanup_task(state: Arc<AppState>) {
 mod tests {
     use super::*;
 
-    /// Allowed charset for lobby codes - excludes I, O, 0, 1 for readability
-    const CHARSET: &str = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
     #[test]
     fn test_generate_lobby_code_length() {
         // Generate multiple codes and verify they are always 6 characters
@@ -338,9 +338,10 @@ mod tests {
             let code = generate_lobby_code();
             assert_eq!(
                 code.len(),
-                6,
-                "Generated lobby code '{}' should be exactly 6 characters",
-                code
+                LOBBY_CODE_LENGTH,
+                "Generated lobby code '{}' should be exactly {} characters",
+                code,
+                LOBBY_CODE_LENGTH
             );
         }
     }
@@ -352,11 +353,10 @@ mod tests {
             let code = generate_lobby_code();
             for c in code.chars() {
                 assert!(
-                    CHARSET.contains(c),
-                    "Character '{}' in code '{}' is not in allowed charset '{}'",
+                    LOBBY_CODE_CHARSET.contains(&(c as u8)),
+                    "Character '{}' in code '{}' is not in allowed charset",
                     c,
-                    code,
-                    CHARSET
+                    code
                 );
             }
         }
