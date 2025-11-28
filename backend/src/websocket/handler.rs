@@ -122,10 +122,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, user: Authentica
         }
     }
 
-    // Mark player as disconnected (don't remove immediately - grace period)
+    // Mark player as awaiting reconnection (don't remove - they stay visible during grace period)
     let context = player_context.lock().await;
     if let Some(lobby_id) = &context.lobby_id {
-        mark_player_disconnected(&state, lobby_id, user.user_id).await;
+        mark_player_awaiting_reconnect(&state, lobby_id, user.user_id).await;
     }
 
     tracing::info!(
@@ -172,12 +172,12 @@ async fn add_player_to_lobby(
         if player_exists {
             // Reconnecting! Update their connection state and tx
             if let Some(mut existing_player) = lobby.players.get_mut(&user.user_id) {
-                let was_disconnected = !existing_player.is_connected();
+                let was_awaiting_reconnect = !existing_player.is_connected();
                 existing_player.tx = tx;
                 existing_player.connection_state = PlayerConnectionState::Connected;
                 drop(existing_player);
 
-                if was_disconnected {
+                if was_awaiting_reconnect {
                     tracing::info!(
                         "Player {} ({}) reconnected to lobby {} (type: {:?})",
                         user.username,
@@ -297,39 +297,40 @@ fn find_lobby_by_code(state: &AppState, lobby_code: &str) -> Option<String> {
         .map(|r| r.value().clone())
 }
 
-/// Mark a player as disconnected (starts grace period)
-async fn mark_player_disconnected(state: &AppState, lobby_id: &str, user_id: i64) {
+/// Mark a player as awaiting reconnection (starts grace period but player stays visible)
+/// This is called when a WebSocket drops unexpectedly (not an intentional leave)
+async fn mark_player_awaiting_reconnect(state: &AppState, lobby_id: &str, user_id: i64) {
     if let Some(lobby) = state.lobbies.get(lobby_id) {
         if let Some(mut player) = lobby.players.get_mut(&user_id) {
-            player.connection_state = PlayerConnectionState::Disconnected {
+            player.connection_state = PlayerConnectionState::AwaitingReconnect {
                 since: Instant::now(),
             };
             tracing::info!(
-                "Player {} marked as disconnected in lobby {} (grace period started)",
+                "Player {} awaiting reconnection in lobby {} (grace period started, still visible)",
                 user_id,
                 lobby_id
             );
         }
 
-        // Check if all players are now disconnected
-        let all_disconnected = lobby.players.iter().all(|p| !p.is_connected());
+        // Check if all players are now awaiting reconnection (no active connections)
+        let all_awaiting = lobby.players.iter().all(|p| !p.is_connected());
         drop(lobby);
 
-        if all_disconnected {
+        if all_awaiting {
             // Mark lobby as empty (starts lobby grace period)
             if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
                 if lobby.empty_since.is_none() {
                     lobby.empty_since = Some(Instant::now());
                     tracing::info!(
-                        "Lobby {} has no connected players, grace period started",
+                        "Lobby {} has no active connections, grace period started",
                         lobby_id
                     );
                 }
             }
         }
 
-        // Broadcast updated player list to remaining connected players
-        broadcast_lobby_player_list(state, lobby_id).await;
+        // Note: We don't broadcast here because the player is still visible
+        // and connected players will see no change in the player list
     }
 }
 
@@ -368,11 +369,12 @@ async fn remove_player_from_lobby(state: &AppState, lobby_id: &str, user_id: i64
 /// Broadcast the current lobby player list to all connected clients in a lobby
 async fn broadcast_lobby_player_list(state: &AppState, lobby_id: &str) {
     if let Some(lobby) = state.lobbies.get(lobby_id) {
-        // Only include connected players in the list
+        // Include ALL visible players (connected + awaiting reconnect)
+        // Players only disappear when removed by background cleanup after grace period
         let players: Vec<LobbyPlayerInfo> = lobby
             .players
             .iter()
-            .filter(|p| p.is_connected())
+            .filter(|p| p.is_visible())
             .map(|entry| LobbyPlayerInfo {
                 user_id: entry.user_id.to_string(),
                 username: entry.username.clone(),
@@ -387,7 +389,7 @@ async fn broadcast_lobby_player_list(state: &AppState, lobby_id: &str) {
             lobby_code,
         };
 
-        // Send to all connected players
+        // Only send to actively connected players (awaiting reconnect players have dead tx)
         for entry in lobby.players.iter() {
             if entry.is_connected() {
                 let _ = entry.tx.send(message.clone()).await;

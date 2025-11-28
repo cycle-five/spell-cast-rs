@@ -36,10 +36,11 @@ pub const LOBBY_EMPTY_GRACE_PERIOD: Duration = Duration::from_secs(120);
 /// Connection state for a lobby player
 #[derive(Debug, Clone)]
 pub enum PlayerConnectionState {
-    /// Player is actively connected
+    /// Player is actively connected with an open WebSocket
     Connected,
-    /// Player disconnected at the given time, waiting for reconnection
-    Disconnected { since: Instant },
+    /// Player's WebSocket dropped, waiting for reconnection within grace period
+    /// Player is still visible in the lobby during this state
+    AwaitingReconnect { since: Instant },
 }
 
 /// Information about a connected lobby player
@@ -53,8 +54,17 @@ pub struct LobbyPlayer {
 }
 
 impl LobbyPlayer {
+    /// Returns true if the player has an active WebSocket connection
     pub fn is_connected(&self) -> bool {
         matches!(self.connection_state, PlayerConnectionState::Connected)
+    }
+
+    /// Returns true if the player should be visible in the lobby
+    /// (both connected and awaiting reconnect players are visible)
+    pub fn is_visible(&self) -> bool {
+        // Players are visible in both Connected and AwaitingReconnect states
+        // They only become invisible when removed by the background cleanup task
+        true
     }
 }
 
@@ -272,7 +282,8 @@ async fn lobby_cleanup_task(state: Arc<AppState>) {
 
             // Find players that have exceeded the grace period
             for player_ref in lobby.players.iter() {
-                if let PlayerConnectionState::Disconnected { since } = &player_ref.connection_state
+                if let PlayerConnectionState::AwaitingReconnect { since } =
+                    &player_ref.connection_state
                 {
                     if now.duration_since(*since) > PLAYER_DISCONNECT_GRACE_PERIOD {
                         players_to_remove.push((lobby_id.clone(), player_ref.user_id));
