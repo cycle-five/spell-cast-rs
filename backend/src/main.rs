@@ -307,7 +307,10 @@ async fn lobby_cleanup_task(state: Arc<AppState>) {
             if let Some(lobby) = state.lobbies.get(&lobby_id) {
                 lobby.players.remove(&user_id);
                 // Broadcast updated player list to all connected clients
-                websocket::broadcast_lobby_player_list(lobby, &state).await;
+                // Note: More efficient would be to batch these broadcasts per lobby,
+                // but the complexity trade-off is acceptable for now
+                drop(lobby);
+                websocket::broadcast_lobby_player_list(&state, &lobby_id).await;
                 tracing::info!(
                     "Removed stale disconnected player {} from lobby {} (grace period expired)",
                     user_id,
@@ -323,10 +326,7 @@ async fn lobby_cleanup_task(state: Arc<AppState>) {
                 if let Some(code) = lobby.lobby_code {
                     state.lobby_code_index.remove(&code);
                 }
-                tracing::info!(
-                    "Removed empty lobby {} (grace period expired)",
-                    lobby_id
-                );
+                tracing::info!("Removed empty lobby {} (grace period expired)", lobby_id);
             }
         }
     }
@@ -383,5 +383,219 @@ mod tests {
                 }
             }
         }
+    }
+
+    // Helper function to create a test player
+    fn create_test_player(user_id: i64, connection_state: PlayerConnectionState) -> LobbyPlayer {
+        let (tx, _rx) = mpsc::channel(1);
+        LobbyPlayer {
+            user_id,
+            username: format!("TestUser{}", user_id),
+            avatar_url: None,
+            tx,
+            connection_state,
+        }
+    }
+
+    #[test]
+    fn test_player_is_connected_when_connected() {
+        // Verify that a player with Connected state returns true for is_connected()
+        let player = create_test_player(1, PlayerConnectionState::Connected);
+        assert!(
+            player.is_connected(),
+            "Player with Connected state should return true for is_connected()"
+        );
+    }
+
+    #[test]
+    fn test_player_is_not_connected_when_awaiting_reconnect() {
+        // Verify that a player awaiting reconnection returns false for is_connected()
+        let player = create_test_player(
+            1,
+            PlayerConnectionState::AwaitingReconnect {
+                since: Instant::now(),
+            },
+        );
+        assert!(
+            !player.is_connected(),
+            "Player awaiting reconnection should return false for is_connected()"
+        );
+    }
+
+    #[test]
+    fn test_player_is_visible_when_connected() {
+        // Verify that a connected player is visible in the lobby
+        let player = create_test_player(1, PlayerConnectionState::Connected);
+        assert!(
+            player.is_visible(),
+            "Connected player should be visible in the lobby"
+        );
+    }
+
+    #[test]
+    fn test_player_is_visible_when_awaiting_reconnect() {
+        // Verify that a player awaiting reconnection is still visible during grace period
+        // This tests the key feature: disconnected players remain visible during grace period
+        let player = create_test_player(
+            1,
+            PlayerConnectionState::AwaitingReconnect {
+                since: Instant::now(),
+            },
+        );
+        assert!(
+            player.is_visible(),
+            "Player awaiting reconnection should remain visible during grace period"
+        );
+    }
+
+    #[test]
+    fn test_lobby_connected_player_count_only_counts_connected() {
+        // Verify that connected_player_count only counts actively connected players
+        let lobby = Lobby::new_channel("test_channel".to_string(), Some("test_guild".to_string()));
+
+        // Add a connected player
+        let connected_player = create_test_player(1, PlayerConnectionState::Connected);
+        lobby.players.insert(1, connected_player);
+
+        // Add a player awaiting reconnection
+        let disconnected_player = create_test_player(
+            2,
+            PlayerConnectionState::AwaitingReconnect {
+                since: Instant::now(),
+            },
+        );
+        lobby.players.insert(2, disconnected_player);
+
+        assert_eq!(
+            lobby.connected_player_count(),
+            1,
+            "Only the connected player should be counted"
+        );
+        assert!(
+            lobby.has_any_players(),
+            "Lobby should report having players (both connected and disconnected)"
+        );
+    }
+
+    #[test]
+    fn test_player_reconnection_updates_connection_state() {
+        // Verify that when a player reconnects, their connection state is updated
+        let lobby = Lobby::new_channel("test_channel".to_string(), None);
+
+        // Initially add a player awaiting reconnection
+        let disconnected_player = create_test_player(
+            1,
+            PlayerConnectionState::AwaitingReconnect {
+                since: Instant::now(),
+            },
+        );
+        lobby.players.insert(1, disconnected_player);
+
+        // Verify player is not connected initially
+        {
+            let player = lobby.players.get(&1).unwrap();
+            assert!(
+                !player.is_connected(),
+                "Player should not be connected initially"
+            );
+        }
+
+        // Simulate reconnection by updating the player's connection state
+        {
+            let mut player = lobby.players.get_mut(&1).unwrap();
+            player.connection_state = PlayerConnectionState::Connected;
+        }
+
+        // Verify player is now connected
+        {
+            let player = lobby.players.get(&1).unwrap();
+            assert!(
+                player.is_connected(),
+                "Player should be connected after reconnection"
+            );
+        }
+
+        // Verify connected count is now 1
+        assert_eq!(
+            lobby.connected_player_count(),
+            1,
+            "Connected player count should be 1 after reconnection"
+        );
+    }
+
+    #[test]
+    fn test_all_players_visible_regardless_of_connection_state() {
+        // Verify that all players in a lobby are visible, regardless of connection state
+        let lobby = Lobby::new_channel("test_channel".to_string(), None);
+
+        // Add multiple players with different states
+        let connected1 = create_test_player(1, PlayerConnectionState::Connected);
+        let connected2 = create_test_player(2, PlayerConnectionState::Connected);
+        let disconnected1 = create_test_player(
+            3,
+            PlayerConnectionState::AwaitingReconnect {
+                since: Instant::now(),
+            },
+        );
+        let disconnected2 = create_test_player(
+            4,
+            PlayerConnectionState::AwaitingReconnect {
+                since: Instant::now(),
+            },
+        );
+
+        lobby.players.insert(1, connected1);
+        lobby.players.insert(2, connected2);
+        lobby.players.insert(3, disconnected1);
+        lobby.players.insert(4, disconnected2);
+
+        // Count visible players
+        let visible_count: usize = lobby.players.iter().filter(|p| p.is_visible()).count();
+
+        assert_eq!(
+            visible_count, 4,
+            "All 4 players should be visible regardless of connection state"
+        );
+
+        // Verify connected count is only 2
+        assert_eq!(
+            lobby.connected_player_count(),
+            2,
+            "Only 2 players should be counted as connected"
+        );
+    }
+
+    #[test]
+    fn test_lobby_empty_since_tracks_when_all_players_disconnected() {
+        // Verify that empty_since can be used to track when all players disconnected
+        let mut lobby = Lobby::new_channel("test_channel".to_string(), None);
+
+        // Initially no empty_since
+        assert!(
+            lobby.empty_since.is_none(),
+            "New lobby should not have empty_since set"
+        );
+
+        // Add a player who disconnects
+        let player = create_test_player(
+            1,
+            PlayerConnectionState::AwaitingReconnect {
+                since: Instant::now(),
+            },
+        );
+        lobby.players.insert(1, player);
+
+        // Simulate marking lobby as having no active connections
+        let all_awaiting = lobby.players.iter().all(|p| !p.is_connected());
+        assert!(all_awaiting, "All players should be awaiting reconnection");
+
+        if all_awaiting {
+            lobby.empty_since = Some(Instant::now());
+        }
+
+        assert!(
+            lobby.empty_since.is_some(),
+            "Lobby should have empty_since set when all players are disconnected"
+        );
     }
 }

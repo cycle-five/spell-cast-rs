@@ -2,6 +2,5 @@
 // TODO: Implement game logic
 
 pub mod grid;
-pub mod validator;
 pub mod scorer;
-
+pub mod validator;
