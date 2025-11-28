@@ -16,7 +16,8 @@ pub fn encrypt(data: &str, key: &str) -> Result<String> {
         anyhow::bail!("Encryption key must be 32 bytes");
     }
 
-    let cipher = Aes256Gcm::new_from_slice(&key_bytes).context("Failed to create cipher")?;
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes)
+        .context("Failed to create cipher")?;
 
     // Generate a random 12-byte nonce
     let nonce_bytes = aes_gcm::aead::rand_core::RngCore::next_u64(&mut OsRng);
@@ -48,7 +49,8 @@ pub fn decrypt(encrypted_data: &str, key: &str) -> Result<String> {
         anyhow::bail!("Encryption key must be 32 bytes");
     }
 
-    let cipher = Aes256Gcm::new_from_slice(&key_bytes).context("Failed to create cipher")?;
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes)
+        .context("Failed to create cipher")?;
 
     // Decode the base64-encoded encrypted data
     let encrypted_bytes = BASE64

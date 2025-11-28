@@ -321,7 +321,10 @@ async fn lobby_cleanup_task(state: Arc<AppState>) {
                 if let Some(code) = lobby.lobby_code {
                     state.lobby_code_index.remove(&code);
                 }
-                tracing::info!("Removed empty lobby {} (grace period expired)", lobby_id);
+                tracing::info!(
+                    "Removed empty lobby {} (grace period expired)",
+                    lobby_id
+                );
             }
         }
     }

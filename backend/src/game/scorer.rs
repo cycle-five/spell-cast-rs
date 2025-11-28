@@ -1,4 +1,4 @@
-use crate::models::{Grid, Multiplier, Position};
+use crate::models::{Grid, Position, Multiplier};
 
 pub struct Scorer;
 
@@ -55,18 +55,20 @@ mod tests {
 
     #[test]
     fn test_score_calculation() {
-        let grid = vec![vec![
-            GridCell {
-                letter: 'H',
-                value: 4,
-                multiplier: None,
-            },
-            GridCell {
-                letter: 'E',
-                value: 1,
-                multiplier: Some(Multiplier::DoubleLetter),
-            },
-        ]];
+        let grid = vec![
+            vec![
+                GridCell {
+                    letter: 'H',
+                    value: 4,
+                    multiplier: None,
+                },
+                GridCell {
+                    letter: 'E',
+                    value: 1,
+                    multiplier: Some(Multiplier::DoubleLetter),
+                },
+            ],
+        ];
 
         let positions = vec![Position { row: 0, col: 0 }, Position { row: 0, col: 1 }];
 

@@ -137,7 +137,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, user: Authentica
 
 /// Fetch user's avatar URL from database
 async fn fetch_user_avatar(state: &AppState, user_id: i64) -> Option<String> {
-    match db::queries::get_user(&state.db, user_id, &state.config.security.encryption_key).await {
+    match db::queries::get_user(
+        &state.db,
+        user_id,
+        &state.config.security.encryption_key,
+    )
+    .await
+    {
         Ok(Some(db_user)) => db_user.avatar_url,
         Ok(None) => {
             tracing::warn!("User {} not found in database", user_id);
@@ -334,7 +340,11 @@ async fn remove_player_from_lobby(state: &AppState, lobby_id: &str, user_id: i64
         lobby.players.remove(&user_id);
         let is_empty = lobby.players.is_empty();
 
-        tracing::info!("Player {} removed from lobby {}", user_id, lobby_id);
+        tracing::info!(
+            "Player {} removed from lobby {}",
+            user_id,
+            lobby_id
+        );
 
         drop(lobby);
 
@@ -343,7 +353,10 @@ async fn remove_player_from_lobby(state: &AppState, lobby_id: &str, user_id: i64
             if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
                 if lobby.empty_since.is_none() {
                     lobby.empty_since = Some(Instant::now());
-                    tracing::info!("Lobby {} is now empty, grace period started", lobby_id);
+                    tracing::info!(
+                        "Lobby {} is now empty, grace period started",
+                        lobby_id
+                    );
                 }
             }
         } else {
@@ -522,7 +535,11 @@ async fn handle_client_message(
         }
 
         ClientMessage::LeaveLobby => {
-            tracing::info!("User {} ({}) leaving lobby", user.username, user.user_id);
+            tracing::info!(
+                "User {} ({}) leaving lobby",
+                user.username,
+                user.user_id
+            );
 
             let mut context = player_context.lock().await;
             if let Some(lobby_id) = context.lobby_id.take() {
@@ -553,12 +570,20 @@ async fn handle_client_message(
         }
 
         ClientMessage::LeaveGame => {
-            tracing::info!("User {} ({}) leaving game", user.username, user.user_id);
+            tracing::info!(
+                "User {} ({}) leaving game",
+                user.username,
+                user.user_id
+            );
             // TODO: Implement leave game logic
         }
 
         ClientMessage::StartGame => {
-            tracing::info!("User {} ({}) starting game", user.username, user.user_id);
+            tracing::info!(
+                "User {} ({}) starting game",
+                user.username,
+                user.user_id
+            );
             // TODO: Implement start game logic
         }
 
@@ -574,12 +599,20 @@ async fn handle_client_message(
         }
 
         ClientMessage::PassTurn => {
-            tracing::info!("User {} ({}) passing turn", user.username, user.user_id);
+            tracing::info!(
+                "User {} ({}) passing turn",
+                user.username,
+                user.user_id
+            );
             // TODO: Implement pass turn logic
         }
 
         ClientMessage::EnableTimer => {
-            tracing::info!("User {} ({}) enabling timer", user.username, user.user_id);
+            tracing::info!(
+                "User {} ({}) enabling timer",
+                user.username,
+                user.user_id
+            );
             // TODO: Implement timer enable logic
         }
     }

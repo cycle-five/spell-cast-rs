@@ -50,7 +50,8 @@ impl Config {
         dotenvy::dotenv().ok();
 
         let database = DatabaseConfig {
-            url: env::var("DATABASE_URL").context("DATABASE_URL must be set")?,
+            url: env::var("DATABASE_URL")
+                .context("DATABASE_URL must be set")?,
             max_connections: env::var("DATABASE_MAX_CONNECTIONS")
                 .unwrap_or_else(|_| "10".to_string())
                 .parse()
@@ -58,7 +59,8 @@ impl Config {
         };
 
         let discord = DiscordConfig {
-            client_id: env::var("DISCORD_CLIENT_ID").context("DISCORD_CLIENT_ID must be set")?,
+            client_id: env::var("DISCORD_CLIENT_ID")
+                .context("DISCORD_CLIENT_ID must be set")?,
             client_secret: env::var("DISCORD_CLIENT_SECRET")
                 .context("DISCORD_CLIENT_SECRET must be set")?,
             redirect_uri: env::var("DISCORD_REDIRECT_URI")
@@ -66,7 +68,8 @@ impl Config {
         };
 
         let server = ServerConfig {
-            host: env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
+            host: env::var("HOST")
+                .unwrap_or_else(|_| "0.0.0.0".to_string()),
             port: env::var("PORT")
                 .unwrap_or_else(|_| "3000".to_string())
                 .parse()
@@ -76,7 +79,8 @@ impl Config {
         };
 
         let security = SecurityConfig {
-            jwt_secret: env::var("JWT_SECRET").context("JWT_SECRET must be set")?,
+            jwt_secret: env::var("JWT_SECRET")
+                .context("JWT_SECRET must be set")?,
             encryption_key: env::var("ENCRYPTION_KEY")
                 .context("ENCRYPTION_KEY must be set (32-byte base64 encoded key)")?,
         };
