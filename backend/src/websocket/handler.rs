@@ -1,8 +1,8 @@
 use crate::{
     auth::AuthenticatedUser,
     db,
-    websocket::messages::{ClientMessage, LobbyPlayerInfo, ServerMessage},
-    AppState, LobbyPlayer,
+    websocket::messages::{ClientMessage, LobbyPlayerInfo, LobbyType, ServerMessage},
+    AppState, Lobby, LobbyPlayer,
 };
 use axum::{
     extract::{
@@ -11,7 +11,6 @@ use axum::{
     },
     response::IntoResponse,
 };
-use dashmap::DashMap;
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -32,7 +31,8 @@ pub async fn handle_websocket(
 
 /// Context for a connected player, tracking their lobby membership
 struct PlayerContext {
-    channel_id: Option<String>,
+    /// The lobby_id of the current lobby (if any)
+    lobby_id: Option<String>,
 }
 
 /// Handle individual WebSocket connection
@@ -62,8 +62,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, user: Authentica
         }
     });
 
-    // Track player's current channel for cleanup on disconnect
-    let player_context = Arc::new(tokio::sync::Mutex::new(PlayerContext { channel_id: None }));
+    // Track player's current lobby for cleanup on disconnect
+    let player_context = Arc::new(tokio::sync::Mutex::new(PlayerContext { lobby_id: None }));
 
     // Handle incoming messages from the client
     let user_for_recv = user.clone();
@@ -121,10 +121,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, user: Authentica
         }
     }
 
-    // Remove player from their lobby channel on disconnect
+    // Remove player from their lobby on disconnect
     let context = player_context.lock().await;
-    if let Some(channel_id) = &context.channel_id {
-        remove_player_from_lobby(&state, channel_id, user.user_id).await;
+    if let Some(lobby_id) = &context.lobby_id {
+        remove_player_from_lobby(&state, lobby_id, user.user_id).await;
     }
 
     tracing::info!(
@@ -134,71 +134,160 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, user: Authentica
     );
 }
 
-/// Add a player to a channel lobby and broadcast the update
-async fn add_player_to_lobby(
-    state: &AppState,
-    channel_id: &str,
-    guild_id: Option<String>,
-    user: &AuthenticatedUser,
-    avatar_url: Option<String>,
-    tx: mpsc::Sender<ServerMessage>,
-) {
-    let lobby_player = LobbyPlayer {
-        user_id: user.user_id,
-        username: user.username.clone(),
-        avatar_url,
-        channel_id: channel_id.to_string(),
-        guild_id,
-        tx,
-    };
-
-    // Get or create the channel lobby
-    let channel_lobby = state
-        .channel_lobbies
-        .entry(channel_id.to_string())
-        .or_insert_with(DashMap::new);
-
-    channel_lobby.insert(user.user_id, lobby_player);
-
-    tracing::info!(
-        "Player {} ({}) joined lobby for channel {}",
-        user.username,
-        user.user_id,
-        channel_id
-    );
-
-    // Broadcast updated player list to all clients in this channel
-    broadcast_channel_lobby_player_list(state, channel_id).await;
-}
-
-/// Remove a player from their channel lobby and broadcast the update
-async fn remove_player_from_lobby(state: &AppState, channel_id: &str, user_id: i64) {
-    if let Some(channel_lobby) = state.channel_lobbies.get(channel_id) {
-        channel_lobby.remove(&user_id);
-
-        tracing::info!(
-            "Player {} removed from lobby for channel {}",
-            user_id,
-            channel_id
-        );
-
-        // If lobby is empty, remove it entirely
-        if channel_lobby.is_empty() {
-            drop(channel_lobby); // Release the read lock
-            state.channel_lobbies.remove(channel_id);
-            tracing::info!("Empty lobby removed for channel {}", channel_id);
-        } else {
-            // Broadcast updated player list to remaining clients
-            drop(channel_lobby); // Release the read lock before broadcast
-            broadcast_channel_lobby_player_list(state, channel_id).await;
+/// Fetch user's avatar URL from database
+async fn fetch_user_avatar(state: &AppState, user_id: i64) -> Option<String> {
+    match db::queries::get_user(
+        &state.db,
+        user_id,
+        &state.config.security.encryption_key,
+    )
+    .await
+    {
+        Ok(Some(db_user)) => db_user.avatar_url,
+        Ok(None) => {
+            tracing::warn!("User {} not found in database", user_id);
+            None
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch user from database: {}", e);
+            None
         }
     }
 }
 
-/// Broadcast the current lobby player list to all clients in a specific channel
-async fn broadcast_channel_lobby_player_list(state: &AppState, channel_id: &str) {
-    if let Some(channel_lobby) = state.channel_lobbies.get(channel_id) {
-        let players: Vec<LobbyPlayerInfo> = channel_lobby
+/// Add a player to a lobby and broadcast the update
+async fn add_player_to_lobby(
+    state: &AppState,
+    lobby_id: &str,
+    user: &AuthenticatedUser,
+    avatar_url: Option<String>,
+    tx: mpsc::Sender<ServerMessage>,
+) -> Option<(LobbyType, Option<String>)> {
+    let lobby_player = LobbyPlayer {
+        user_id: user.user_id,
+        username: user.username.clone(),
+        avatar_url,
+        tx,
+    };
+
+    // Get the lobby and add the player
+    if let Some(lobby) = state.lobbies.get(lobby_id) {
+        lobby.players.insert(user.user_id, lobby_player);
+
+        let lobby_type = lobby.lobby_type.clone();
+        let lobby_code = lobby.lobby_code.clone();
+
+        tracing::info!(
+            "Player {} ({}) joined lobby {} (type: {:?})",
+            user.username,
+            user.user_id,
+            lobby_id,
+            lobby_type
+        );
+
+        drop(lobby); // Release lock before broadcast
+
+        // Broadcast updated player list
+        broadcast_lobby_player_list(state, lobby_id).await;
+
+        Some((lobby_type, lobby_code))
+    } else {
+        tracing::warn!("Lobby {} not found when adding player", lobby_id);
+        None
+    }
+}
+
+/// Get or create a channel lobby
+fn get_or_create_channel_lobby(
+    state: &AppState,
+    channel_id: &str,
+    guild_id: Option<String>,
+) -> String {
+    let lobby_id = format!("channel:{}", channel_id);
+
+    // Check if lobby already exists
+    if state.lobbies.contains_key(&lobby_id) {
+        return lobby_id;
+    }
+
+    // Create new channel lobby
+    let lobby = Lobby::new_channel(channel_id.to_string(), guild_id);
+    state.lobbies.insert(lobby_id.clone(), lobby);
+
+    tracing::info!("Created new channel lobby: {}", lobby_id);
+    lobby_id
+}
+
+/// Create a new custom lobby
+fn create_custom_lobby(state: &AppState) -> (String, String) {
+    let lobby = Lobby::new_custom();
+    let lobby_id = lobby.lobby_id.clone();
+    let lobby_code = lobby.lobby_code.clone().unwrap();
+
+    // Add to code index for quick lookup
+    state
+        .lobby_code_index
+        .insert(lobby_code.clone(), lobby_id.clone());
+
+    // Add to lobbies
+    state.lobbies.insert(lobby_id.clone(), lobby);
+
+    tracing::info!(
+        "Created new custom lobby: {} (code: {})",
+        lobby_id,
+        lobby_code
+    );
+
+    (lobby_id, lobby_code)
+}
+
+/// Find a custom lobby by its code
+fn find_lobby_by_code(state: &AppState, lobby_code: &str) -> Option<String> {
+    // Normalize the code (uppercase, trim)
+    let normalized_code = lobby_code.trim().to_uppercase();
+    state
+        .lobby_code_index
+        .get(&normalized_code)
+        .map(|r| r.value().clone())
+}
+
+/// Remove a player from their lobby and broadcast the update
+async fn remove_player_from_lobby(state: &AppState, lobby_id: &str, user_id: i64) {
+    if let Some(lobby) = state.lobbies.get(lobby_id) {
+        lobby.players.remove(&user_id);
+        let is_empty = lobby.players.is_empty();
+        let lobby_code = lobby.lobby_code.clone();
+
+        tracing::info!(
+            "Player {} removed from lobby {}",
+            user_id,
+            lobby_id
+        );
+
+        drop(lobby); // Release lock
+
+        if is_empty {
+            // Remove empty lobby
+            state.lobbies.remove(lobby_id);
+
+            // Remove from code index if it's a custom lobby
+            if let Some(code) = lobby_code {
+                state.lobby_code_index.remove(&code);
+            }
+
+            tracing::info!("Empty lobby removed: {}", lobby_id);
+        } else {
+            // Broadcast updated player list to remaining clients
+            broadcast_lobby_player_list(state, lobby_id).await;
+        }
+    }
+}
+
+/// Broadcast the current lobby player list to all clients in a lobby
+async fn broadcast_lobby_player_list(state: &AppState, lobby_id: &str) {
+    if let Some(lobby) = state.lobbies.get(lobby_id) {
+        let players: Vec<LobbyPlayerInfo> = lobby
+            .players
             .iter()
             .map(|entry| LobbyPlayerInfo {
                 user_id: entry.user_id.to_string(),
@@ -207,9 +296,14 @@ async fn broadcast_channel_lobby_player_list(state: &AppState, channel_id: &str)
             })
             .collect();
 
-        let message = ServerMessage::LobbyPlayerList { players };
+        let lobby_code = lobby.lobby_code.clone();
 
-        for entry in channel_lobby.iter() {
+        let message = ServerMessage::LobbyPlayerList {
+            players,
+            lobby_code,
+        };
+
+        for entry in lobby.players.iter() {
             let _ = entry.tx.send(message.clone()).await;
         }
     }
@@ -224,51 +318,146 @@ async fn handle_client_message(
     player_context: &Arc<tokio::sync::Mutex<PlayerContext>>,
 ) -> anyhow::Result<()> {
     match msg {
-        ClientMessage::JoinLobby {
+        ClientMessage::JoinChannelLobby {
             channel_id,
             guild_id,
         } => {
             tracing::info!(
-                "User {} ({}) joining lobby for channel: {}, guild: {:?}",
+                "User {} ({}) joining channel lobby: {}, guild: {:?}",
                 user.username,
                 user.user_id,
                 channel_id,
                 guild_id
             );
 
-            // Remove from previous lobby if switching channels
+            // Get or create the channel lobby
+            let lobby_id = get_or_create_channel_lobby(state, &channel_id, guild_id);
+
+            // Remove from previous lobby if different
             {
                 let mut context = player_context.lock().await;
-                if let Some(old_channel_id) = &context.channel_id {
-                    if old_channel_id != &channel_id {
-                        remove_player_from_lobby(state, old_channel_id, user.user_id).await;
+                if let Some(old_lobby_id) = &context.lobby_id {
+                    if old_lobby_id != &lobby_id {
+                        remove_player_from_lobby(state, old_lobby_id, user.user_id).await;
                     }
                 }
-                context.channel_id = Some(channel_id.clone());
+                context.lobby_id = Some(lobby_id.clone());
             }
 
-            // Fetch avatar from database
-            let avatar_url = match db::queries::get_user(
-                &state.db,
-                user.user_id,
-                &state.config.security.encryption_key,
-            )
-            .await
+            // Fetch avatar and add to lobby
+            let avatar_url = fetch_user_avatar(state, user.user_id).await;
+            if let Some((lobby_type, lobby_code)) =
+                add_player_to_lobby(state, &lobby_id, user, avatar_url, tx.clone()).await
             {
-                Ok(Some(db_user)) => db_user.avatar_url,
-                Ok(None) => {
-                    tracing::warn!("User {} not found in database", user.user_id);
-                    None
+                // Send confirmation
+                tx.send(ServerMessage::LobbyJoined {
+                    lobby_id,
+                    lobby_type,
+                    lobby_code,
+                })
+                .await?;
+            }
+        }
+
+        ClientMessage::CreateCustomLobby => {
+            tracing::info!(
+                "User {} ({}) creating custom lobby",
+                user.username,
+                user.user_id
+            );
+
+            // Create the custom lobby
+            let (lobby_id, lobby_code) = create_custom_lobby(state);
+
+            // Remove from previous lobby
+            {
+                let mut context = player_context.lock().await;
+                if let Some(old_lobby_id) = &context.lobby_id {
+                    remove_player_from_lobby(state, old_lobby_id, user.user_id).await;
                 }
-                Err(e) => {
-                    tracing::error!("Failed to fetch user from database: {}", e);
-                    None
+                context.lobby_id = Some(lobby_id.clone());
+            }
+
+            // Fetch avatar and add to lobby
+            let avatar_url = fetch_user_avatar(state, user.user_id).await;
+
+            // Send lobby created response first
+            tx.send(ServerMessage::LobbyCreated {
+                lobby_code: lobby_code.clone(),
+            })
+            .await?;
+
+            // Then add player and send joined confirmation
+            if let Some((lobby_type, lobby_code)) =
+                add_player_to_lobby(state, &lobby_id, user, avatar_url, tx.clone()).await
+            {
+                tx.send(ServerMessage::LobbyJoined {
+                    lobby_id,
+                    lobby_type,
+                    lobby_code,
+                })
+                .await?;
+            }
+        }
+
+        ClientMessage::JoinCustomLobby { lobby_code } => {
+            tracing::info!(
+                "User {} ({}) joining custom lobby with code: {}",
+                user.username,
+                user.user_id,
+                lobby_code
+            );
+
+            // Find the lobby by code
+            let lobby_id = match find_lobby_by_code(state, &lobby_code) {
+                Some(id) => id,
+                None => {
+                    tx.send(ServerMessage::Error {
+                        message: format!("Lobby with code '{}' not found", lobby_code),
+                    })
+                    .await?;
+                    return Ok(());
                 }
             };
 
-            // Add to the new channel lobby
-            add_player_to_lobby(state, &channel_id, guild_id, user, avatar_url, tx.clone()).await;
+            // Remove from previous lobby if different
+            {
+                let mut context = player_context.lock().await;
+                if let Some(old_lobby_id) = &context.lobby_id {
+                    if old_lobby_id != &lobby_id {
+                        remove_player_from_lobby(state, old_lobby_id, user.user_id).await;
+                    }
+                }
+                context.lobby_id = Some(lobby_id.clone());
+            }
+
+            // Fetch avatar and add to lobby
+            let avatar_url = fetch_user_avatar(state, user.user_id).await;
+            if let Some((lobby_type, lobby_code)) =
+                add_player_to_lobby(state, &lobby_id, user, avatar_url, tx.clone()).await
+            {
+                tx.send(ServerMessage::LobbyJoined {
+                    lobby_id,
+                    lobby_type,
+                    lobby_code,
+                })
+                .await?;
+            }
         }
+
+        ClientMessage::LeaveLobby => {
+            tracing::info!(
+                "User {} ({}) leaving lobby",
+                user.username,
+                user.user_id
+            );
+
+            let mut context = player_context.lock().await;
+            if let Some(lobby_id) = context.lobby_id.take() {
+                remove_player_from_lobby(state, &lobby_id, user.user_id).await;
+            }
+        }
+
         ClientMessage::CreateGame { mode } => {
             tracing::info!(
                 "User {} ({}) creating game with mode: {:?}",
@@ -280,6 +469,7 @@ async fn handle_client_message(
             let game_id = uuid::Uuid::new_v4().to_string();
             tx.send(ServerMessage::GameCreated { game_id }).await?;
         }
+
         ClientMessage::JoinGame { game_id } => {
             tracing::info!(
                 "User {} ({}) joining game: {}",
@@ -289,6 +479,7 @@ async fn handle_client_message(
             );
             // TODO: Implement join game logic
         }
+
         ClientMessage::LeaveGame => {
             tracing::info!(
                 "User {} ({}) leaving game",
@@ -297,6 +488,7 @@ async fn handle_client_message(
             );
             // TODO: Implement leave game logic
         }
+
         ClientMessage::StartGame => {
             tracing::info!(
                 "User {} ({}) starting game",
@@ -305,6 +497,7 @@ async fn handle_client_message(
             );
             // TODO: Implement start game logic
         }
+
         ClientMessage::SubmitWord { word, positions } => {
             tracing::info!(
                 "User {} ({}) submitting word: {} at positions: {:?}",
@@ -315,6 +508,7 @@ async fn handle_client_message(
             );
             // TODO: Implement word submission logic
         }
+
         ClientMessage::PassTurn => {
             tracing::info!(
                 "User {} ({}) passing turn",
@@ -323,6 +517,7 @@ async fn handle_client_message(
             );
             // TODO: Implement pass turn logic
         }
+
         ClientMessage::EnableTimer => {
             tracing::info!(
                 "User {} ({}) enabling timer",

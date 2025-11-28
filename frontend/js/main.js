@@ -9,6 +9,8 @@ class App {
     this.currentScreen = 'loading';
     this.channelId = null;
     this.guildId = null;
+    this.currentLobbyCode = null;
+    this.currentLobbyType = null;
   }
 
   async init() {
@@ -65,6 +67,24 @@ class App {
       });
     });
 
+    // Custom lobby button - create a new custom lobby
+    document.getElementById('create-custom-lobby-btn')?.addEventListener('click', () => {
+      console.log('Creating custom lobby...');
+      this.gameClient.createCustomLobby();
+    });
+
+    // Join custom lobby button
+    document.getElementById('join-custom-lobby-btn')?.addEventListener('click', () => {
+      const codeInput = document.getElementById('lobby-code-input');
+      const code = codeInput?.value?.trim();
+      if (code) {
+        console.log('Joining custom lobby with code:', code);
+        this.gameClient.joinCustomLobby(code);
+      } else {
+        this.showError('Please enter a lobby code');
+      }
+    });
+
     // Game controls
     document.getElementById('clear-btn')?.addEventListener('click', () => {
       this.gameUI.clearSelection();
@@ -85,17 +105,53 @@ class App {
 
     // Join lobby when WebSocket connects
     this.gameClient.on('connected', () => {
-      console.log('WebSocket connected, joining lobby for channel:', this.channelId);
+      console.log('WebSocket connected');
+      // If we have a channel context (Discord activity), auto-join the channel lobby
       if (this.channelId) {
-        this.gameClient.joinLobby(this.channelId, this.guildId);
+        console.log('Auto-joining channel lobby:', this.channelId);
+        this.gameClient.joinChannelLobby(this.channelId, this.guildId);
       } else {
-        console.warn('No channel ID available, cannot join lobby');
+        // No channel context (e.g., web client or DM with bot)
+        // User can manually create or join a custom lobby
+        console.log('No channel context - user can create or join a custom lobby');
+        this.showCustomLobbyControls();
+      }
+    });
+
+    // Handle lobby created response
+    this.gameClient.on('lobby_created', (data) => {
+      console.log('Custom lobby created with code:', data.lobby_code);
+      this.currentLobbyCode = data.lobby_code;
+      this.displayLobbyCode(data.lobby_code);
+    });
+
+    // Handle lobby joined confirmation
+    this.gameClient.on('lobby_joined', (data) => {
+      console.log('Joined lobby:', data.lobby_id, 'type:', data.lobby_type);
+      this.currentLobbyType = data.lobby_type;
+      this.currentLobbyCode = data.lobby_code;
+
+      if (data.lobby_code) {
+        this.displayLobbyCode(data.lobby_code);
+      } else {
+        this.hideLobbyCode();
       }
     });
 
     // Listen for lobby player list updates
     this.gameClient.on('lobby_player_list', (data) => {
       this.displayLobbyPlayers(data.players);
+      // Update lobby code display if provided
+      if (data.lobby_code) {
+        this.currentLobbyCode = data.lobby_code;
+        this.displayLobbyCode(data.lobby_code);
+      }
+    });
+
+    // Listen for errors
+    this.gameClient.on('error', (data) => {
+      console.error('Server error:', data.message);
+      this.showError(data.message);
     });
 
     // Listen for game state changes
@@ -128,6 +184,28 @@ class App {
     setTimeout(() => {
       toast.classList.add('hidden');
     }, 5000);
+  }
+
+  showCustomLobbyControls() {
+    const controls = document.getElementById('custom-lobby-controls');
+    if (controls) {
+      controls.classList.remove('hidden');
+    }
+  }
+
+  displayLobbyCode(code) {
+    const codeDisplay = document.getElementById('lobby-code-display');
+    if (codeDisplay) {
+      codeDisplay.textContent = `Lobby Code: ${code}`;
+      codeDisplay.classList.remove('hidden');
+    }
+  }
+
+  hideLobbyCode() {
+    const codeDisplay = document.getElementById('lobby-code-display');
+    if (codeDisplay) {
+      codeDisplay.classList.add('hidden');
+    }
   }
 
   displayLobbyPlayers(players) {

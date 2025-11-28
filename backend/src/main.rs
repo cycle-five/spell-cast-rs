@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use config::Config;
 use dictionary::Dictionary;
-use websocket::messages::ServerMessage;
+use websocket::messages::{LobbyType, ServerMessage};
 
 /// Information about a connected lobby player
 #[derive(Debug, Clone)]
@@ -33,9 +33,66 @@ pub struct LobbyPlayer {
     pub user_id: i64,
     pub username: String,
     pub avatar_url: Option<String>,
-    pub channel_id: String,
-    pub guild_id: Option<String>,
     pub tx: mpsc::Sender<ServerMessage>,
+}
+
+/// A game lobby that players can join
+#[derive(Debug)]
+pub struct Lobby {
+    pub lobby_id: String,
+    pub lobby_type: LobbyType,
+    /// For custom lobbies, a short shareable code (e.g., "ABC123")
+    pub lobby_code: Option<String>,
+    /// For channel lobbies, the Discord channel ID
+    pub channel_id: Option<String>,
+    /// For channel lobbies, the Discord guild ID
+    pub guild_id: Option<String>,
+    /// Players in the lobby, keyed by user_id
+    pub players: DashMap<i64, LobbyPlayer>,
+    /// When the lobby was created
+    pub created_at: std::time::Instant,
+}
+
+impl Lobby {
+    /// Create a new channel-based lobby
+    pub fn new_channel(channel_id: String, guild_id: Option<String>) -> Self {
+        Self {
+            lobby_id: format!("channel:{}", channel_id),
+            lobby_type: LobbyType::Channel,
+            lobby_code: None,
+            channel_id: Some(channel_id),
+            guild_id,
+            players: DashMap::new(),
+            created_at: std::time::Instant::now(),
+        }
+    }
+
+    /// Create a new custom lobby with a generated code
+    pub fn new_custom() -> Self {
+        let lobby_code = generate_lobby_code();
+        Self {
+            lobby_id: format!("custom:{}", lobby_code),
+            lobby_type: LobbyType::Custom,
+            lobby_code: Some(lobby_code),
+            channel_id: None,
+            guild_id: None,
+            players: DashMap::new(),
+            created_at: std::time::Instant::now(),
+        }
+    }
+}
+
+/// Generate a short, readable lobby code (6 alphanumeric characters)
+fn generate_lobby_code() -> String {
+    use rand::Rng;
+    const CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Excludes I, O, 0, 1 for readability
+    let mut rng = rand::rng();
+    (0..6)
+        .map(|_| {
+            let idx = rng.random_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
+        .collect()
 }
 
 /// Application state shared across all handlers
@@ -44,8 +101,10 @@ pub struct AppState {
     pub db: PgPool,
     pub dictionary: Dictionary,
     pub active_games: DashMap<Uuid, GameSession>,
-    /// Lobbies keyed by channel_id, containing players keyed by user_id
-    pub channel_lobbies: DashMap<String, DashMap<i64, LobbyPlayer>>,
+    /// All lobbies keyed by lobby_id (e.g., "channel:123" or "custom:ABC123")
+    pub lobbies: DashMap<String, Lobby>,
+    /// Index from lobby_code to lobby_id for quick custom lobby lookup
+    pub lobby_code_index: DashMap<String, String>,
     pub http_client: reqwest::Client,
 }
 
@@ -112,7 +171,8 @@ async fn main() -> Result<()> {
         db,
         dictionary,
         active_games: DashMap::new(),
-        channel_lobbies: DashMap::new(),
+        lobbies: DashMap::new(),
+        lobby_code_index: DashMap::new(),
         http_client,
     });
 

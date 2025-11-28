@@ -41,8 +41,23 @@
           </button>
         </div>
 
+        <!-- Custom Lobby Controls (shown when no channel context) -->
+        <div id="custom-lobby-controls" class="custom-lobby-controls hidden">
+          <div class="custom-lobby-section">
+            <button id="create-custom-lobby-btn" class="secondary-button">Create Private Lobby</button>
+            <span class="or-divider">or</span>
+            <div class="join-lobby-form">
+              <input type="text" id="lobby-code-input" placeholder="Enter lobby code" maxlength="6" class="lobby-code-input">
+              <button id="join-custom-lobby-btn" class="secondary-button">Join</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lobby Code Display (shown for custom lobbies) -->
+        <div id="lobby-code-display" class="lobby-code-display hidden"></div>
+
         <div id="lobby-players" class="players-list">
-          <h3>Players</h3>
+          <h3>Players in Lobby</h3>
           <div id="players-container"></div>
         </div>
 
