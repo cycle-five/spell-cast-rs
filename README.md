@@ -39,7 +39,7 @@ spell-cast-rs/
 │   │   ├── dictionary/# Word validation
 │   │   └── utils/     # Utilities
 │   └── migrations/    # Database migrations
-├── docs/              # Extensive (ostensiebly) documentation
+├── docs/              # Extensive (ostensibly) documentation
 └── frontend/          # Web frontend
     ├── js/            # JavaScript modules
     ├── styles/        # CSS stylesheets
