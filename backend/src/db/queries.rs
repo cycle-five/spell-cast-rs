@@ -1,4 +1,7 @@
-use crate::{encryption, models::{User, Game, GamePlayer, GameBoard, GameMove, UserGuildProfile}};
+use crate::{
+    encryption,
+    models::{Game, GameBoard, GameMove, GamePlayer, User, UserGuildProfile},
+};
 use sqlx::{PgPool, Result};
 use uuid::Uuid;
 
@@ -12,8 +15,7 @@ pub async fn get_user(pool: &PgPool, user_id: i64, encryption_key: &str) -> Resu
     // Decrypt refresh token if present
     if let Some(ref mut u) = user {
         if let Some(ref encrypted_token) = u.refresh_token {
-            u.refresh_token = encryption::decrypt(encrypted_token, encryption_key)
-                .ok();
+            u.refresh_token = encryption::decrypt(encrypted_token, encryption_key).ok();
         }
     }
 
@@ -32,8 +34,9 @@ pub async fn create_or_update_user(
 ) -> Result<User> {
     // Encrypt refresh token if present
     let encrypted_token = if let Some(token) = refresh_token {
-        Some(encryption::encrypt(token, encryption_key)
-            .map_err(|e| sqlx::Error::Protocol(format!("Failed to encrypt refresh token: {}", e)))?)
+        Some(encryption::encrypt(token, encryption_key).map_err(|e| {
+            sqlx::Error::Protocol(format!("Failed to encrypt refresh token: {}", e))
+        })?)
     } else {
         None
     };
@@ -92,7 +95,7 @@ pub async fn update_user_refresh_token(
             token_expires_at = $2,
             updated_at = NOW()
         WHERE user_id = $3
-        "#
+        "#,
     )
     .bind(&encrypted_token)
     .bind(token_expires_at)
@@ -114,7 +117,7 @@ pub async fn clear_user_tokens(pool: &PgPool, user_id: i64) -> Result<()> {
             token_expires_at = NULL,
             updated_at = NOW()
         WHERE user_id = $1
-        "#
+        "#,
     )
     .bind(user_id)
     .execute(pool)
@@ -135,7 +138,7 @@ pub async fn create_game(pool: &PgPool, game: &Game) -> Result<Game> {
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING *
-        "#
+        "#,
     )
     .bind(game.game_id)
     .bind(game.guild_id)
@@ -157,11 +160,7 @@ pub async fn get_game(pool: &PgPool, game_id: Uuid) -> Result<Option<Game>> {
         .await
 }
 
-pub async fn update_game_state(
-    pool: &PgPool,
-    game_id: Uuid,
-    state: &str,
-) -> Result<()> {
+pub async fn update_game_state(pool: &PgPool, game_id: Uuid, state: &str) -> Result<()> {
     sqlx::query("UPDATE games SET state = $1 WHERE game_id = $2")
         .bind(state)
         .bind(game_id)
@@ -183,7 +182,7 @@ pub async fn add_player_to_game(
         INSERT INTO game_players (game_id, user_id, team, is_bot)
         VALUES ($1, $2, $3, $4)
         RETURNING *
-        "#
+        "#,
     )
     .bind(game_id)
     .bind(user_id)
@@ -195,7 +194,7 @@ pub async fn add_player_to_game(
 
 pub async fn get_game_players(pool: &PgPool, game_id: Uuid) -> Result<Vec<GamePlayer>> {
     sqlx::query_as::<_, GamePlayer>(
-        "SELECT * FROM game_players WHERE game_id = $1 ORDER BY joined_at"
+        "SELECT * FROM game_players WHERE game_id = $1 ORDER BY joined_at",
     )
     .bind(game_id)
     .fetch_all(pool)
@@ -213,7 +212,7 @@ pub async fn create_game_board(
         INSERT INTO game_boards (game_id, grid)
         VALUES ($1, $2)
         RETURNING *
-        "#
+        "#,
     )
     .bind(game_id)
     .bind(grid)
@@ -243,7 +242,7 @@ pub async fn create_game_move(
         INSERT INTO game_moves (game_id, user_id, round_number, word, score, positions)
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *
-        "#
+        "#,
     )
     .bind(game_id)
     .bind(user_id)
@@ -256,12 +255,10 @@ pub async fn create_game_move(
 }
 
 pub async fn get_game_moves(pool: &PgPool, game_id: Uuid) -> Result<Vec<GameMove>> {
-    sqlx::query_as::<_, GameMove>(
-        "SELECT * FROM game_moves WHERE game_id = $1 ORDER BY timestamp"
-    )
-    .bind(game_id)
-    .fetch_all(pool)
-    .await
+    sqlx::query_as::<_, GameMove>("SELECT * FROM game_moves WHERE game_id = $1 ORDER BY timestamp")
+        .bind(game_id)
+        .fetch_all(pool)
+        .await
 }
 
 // User guild profile queries
@@ -272,7 +269,7 @@ pub async fn get_user_guild_profile(
     guild_id: i64,
 ) -> Result<Option<UserGuildProfile>> {
     sqlx::query_as::<_, UserGuildProfile>(
-        "SELECT * FROM user_guild_profiles WHERE user_id = $1 AND guild_id = $2"
+        "SELECT * FROM user_guild_profiles WHERE user_id = $1 AND guild_id = $2",
     )
     .bind(user_id)
     .bind(guild_id)
@@ -296,7 +293,7 @@ pub async fn create_or_update_guild_profile(
             nickname = $3,
             updated_at = NOW()
         RETURNING *
-        "#
+        "#,
     )
     .bind(user_id)
     .bind(guild_id)
