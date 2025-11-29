@@ -269,7 +269,7 @@ pub async fn create_game_session(
     .bind(game_id)
     .bind(guild_id)
     .bind(channel_id)
-    .bind("multiplayer") // Default game mode
+    .bind(GameMode::Multiplayer) // Default game mode
     .bind("waiting") // Initial state
     .bind(1_i32) // Start at round 1
     .bind(total_rounds as i32)
