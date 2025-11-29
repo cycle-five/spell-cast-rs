@@ -488,7 +488,7 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
 
     // Parse used words from JSON
     let used_words: std::collections::HashSet<String> = if let Some(ref b) = board {
-        serde_json::from_value(b.used_words.clone()).unwrap_or_default()
+        serde_json::from_value(b.used_words.clone())?
     } else {
         std::collections::HashSet::new()
     };
