@@ -373,7 +373,7 @@ pub async fn add_game_players_batch(
         )
         .bind(game_id)
         .bind(*user_id)
-        .bind(*turn_order as i32) // Store turn_order in team column for now
+        .bind(*turn_order as i32) // TODO: Add dedicated turn_order column instead of reusing team
         .bind(0_i32) // Initial score
         .bind(false) // Not a bot
         .execute(&mut *tx)
