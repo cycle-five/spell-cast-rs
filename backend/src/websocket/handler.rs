@@ -955,7 +955,7 @@ async fn handle_client_message(
             };
 
             // Fetch game state from DB
-            let game_state =
+            let mut game_state =
                 match db::queries::get_active_game_for_lobby(&state.db, &lobby_id).await {
                     Ok(Some(gs)) => gs,
                     Ok(None) => {
@@ -976,15 +976,22 @@ async fn handle_client_message(
                     }
                 };
 
-            // Validate turn
-            // TODO: Proper turn validation using user_id from DB
-            // For now, we'll skip strict turn validation to get it working,
-            // but in production we must check if game_state.players[current_player_index].user_id == user.user_id
+            let game_uuid = game_state.game_id;
 
-            // Check if word is already used
-            if game_state.used_words.contains(&word.to_uppercase()) {
-                tx.send(ServerMessage::InvalidWord {
-                    reason: "Word already used".to_string(),
+            // Get player records to map user_ids properly
+            let player_records = db::queries::get_game_players(&state.db, game_uuid)
+                .await
+                .unwrap_or_default();
+
+            // Validate turn - check if it's this player's turn
+            let current_turn_player_id = player_records
+                .get(game_state.current_player_index)
+                .map(|p| p.user_id);
+
+            if current_turn_player_id != Some(user.user_id) {
+                tx.send(ServerMessage::GameError {
+                    code: "not_your_turn".to_string(),
+                    message: "It's not your turn".to_string(),
                 })
                 .await?;
                 return Ok(());
@@ -1012,9 +1019,6 @@ async fn handle_client_message(
             // Score word
             let word_score = Scorer::calculate_score(&game_state.grid, &positions);
 
-            // Update DB
-            let game_uuid = game_state.game_id;
-
             // 1. Update player score (adds word_score to existing score)
             if let Err(e) =
                 db::queries::update_player_score(&state.db, game_uuid, user.user_id, word_score)
@@ -1024,14 +1028,14 @@ async fn handle_client_message(
             }
 
             // 2. Add to used words
-            let mut new_used_words: Vec<String> = game_state.used_words.into_iter().collect();
-            new_used_words.push(word.to_uppercase());
-            if let Err(e) =
-                db::queries::update_game_board_used_words(&state.db, game_uuid, &new_used_words)
-                    .await
-            {
-                tracing::error!("Failed to update used words: {}", e);
-            }
+            // let mut new_used_words: Vec<String> = game_state.used_words.iter().cloned().collect();
+            // new_used_words.push(word.to_uppercase());
+            // if let Err(e) =
+            //     db::queries::update_game_board_used_words(&state.db, game_uuid, &new_used_words)
+            //         .await
+            // {
+            //     tracing::error!("Failed to update used words: {}", e);
+            // }
 
             // 3. Record move
             if let Err(e) = db::queries::create_game_move(
@@ -1048,20 +1052,31 @@ async fn handle_client_message(
                 tracing::error!("Failed to record move: {}", e);
             }
 
+            // 4. Replace used letters with new random letters
+            GridGenerator::replace_letters(&mut game_state.grid, &positions);
+
+            // 5. Save updated grid to database
+            if let Ok(grid_json) = serde_json::to_value(&game_state.grid) {
+                if let Err(e) =
+                    db::queries::update_game_board_grid(&state.db, game_uuid, &grid_json).await
+                {
+                    tracing::error!("Failed to update grid: {}", e);
+                }
+            }
+
             // Get player's current total score for the broadcast
-            let player_total_score = game_state
-                .players
+            let player_total_score = player_records
                 .iter()
-                .find(|p| p.username == user.username)
+                .find(|p| p.user_id == user.user_id)
                 .map(|p| p.score + word_score)
                 .unwrap_or(word_score);
 
-            // Broadcast WordScored with the word score (not total)
+            // Broadcast WordScored
             let player_info = crate::websocket::messages::PlayerInfo {
                 user_id: user.user_id,
                 username: user.username.clone(),
-                avatar_url: None, // TODO: Fetch avatar
-                score: player_total_score, // Send new total score for scoreboard update
+                avatar_url: None,
+                score: player_total_score,
                 team: None,
             };
 
@@ -1070,15 +1085,150 @@ async fn handle_client_message(
                 &lobby_id,
                 ServerMessage::WordScored {
                     word: word.to_string(),
-                    score: word_score, // Send the word score, not total
+                    score: word_score,
                     player: player_info,
                     positions: positions.clone(),
                 },
             )
             .await;
 
-            // TODO: Handle turn passing / round end logic
-            // For now, just keep it simple
+            // 6. Broadcast GridUpdate with the new grid
+            broadcast_to_lobby(
+                state,
+                &lobby_id,
+                ServerMessage::GridUpdate {
+                    grid: game_state.grid.clone(),
+                    replaced_positions: positions.clone(),
+                },
+            )
+            .await;
+
+            // 7. Advance turn to next player
+            let num_players = player_records.len();
+            let current_idx = game_state.current_player_index;
+            let next_idx = (current_idx + 1) % num_players;
+
+            // Check if we've completed a round (wrapped back to first player)
+            let round_complete = next_idx < current_idx || (next_idx == 0 && current_idx == num_players - 1);
+            let new_round = if round_complete {
+                game_state.current_round + 1
+            } else {
+                game_state.current_round
+            };
+
+            // Check if game is over
+            if new_round > game_state.total_rounds {
+                // Game is finished - find winner
+                let winner_id = player_records
+                    .iter()
+                    .max_by_key(|p| p.score)
+                    .map(|p| p.user_id);
+
+                // Update game state in DB
+                if let Err(e) = db::queries::finish_game(&state.db, game_uuid, winner_id).await {
+                    tracing::error!("Failed to finish game: {}", e);
+                }
+
+                // Clear active game from lobby
+                if let Some(mut lobby) = state.lobbies.get_mut(&lobby_id) {
+                    lobby.active_game_id = None;
+                }
+
+                // Build final scores
+                let final_scores: Vec<crate::websocket::messages::ScoreInfo> = player_records
+                    .iter()
+                    .map(|p| {
+                        // Find username from game_state.players
+                        let username = game_state
+                            .players
+                            .get(p.team.unwrap_or(0) as usize)
+                            .map(|gp| gp.username.clone())
+                            .unwrap_or_else(|| format!("Player {}", p.user_id));
+                        crate::websocket::messages::ScoreInfo {
+                            user_id: p.user_id,
+                            username,
+                            score: p.score + if p.user_id == user.user_id { word_score } else { 0 },
+                        }
+                    })
+                    .collect();
+
+                broadcast_to_lobby(
+                    state,
+                    &lobby_id,
+                    ServerMessage::GameOver {
+                        winner: winner_id,
+                        final_scores,
+                    },
+                )
+                .await;
+
+                tracing::info!("Game {} finished, winner: {:?}", game_uuid, winner_id);
+            } else {
+                // Game continues - update turn
+                let next_player_id = player_records
+                    .get(next_idx)
+                    .map(|p| p.user_id)
+                    .unwrap_or(0);
+
+                // Update DB with new round and current player
+                if let Err(e) = db::queries::update_game_round(
+                    &state.db,
+                    game_uuid,
+                    new_round as i32,
+                    next_player_id,
+                )
+                .await
+                {
+                    tracing::error!("Failed to update game round: {}", e);
+                }
+
+                // Broadcast turn update
+                broadcast_to_lobby(
+                    state,
+                    &lobby_id,
+                    ServerMessage::TurnUpdate {
+                        current_player: next_player_id,
+                        time_remaining: None,
+                    },
+                )
+                .await;
+
+                // If we just started a new round, broadcast RoundEnd
+                if round_complete && new_round <= game_state.total_rounds {
+                    let scores: Vec<crate::websocket::messages::ScoreInfo> = player_records
+                        .iter()
+                        .map(|p| {
+                            let username = game_state
+                                .players
+                                .get(p.team.unwrap_or(0) as usize)
+                                .map(|gp| gp.username.clone())
+                                .unwrap_or_else(|| format!("Player {}", p.user_id));
+                            crate::websocket::messages::ScoreInfo {
+                                user_id: p.user_id,
+                                username,
+                                score: p.score + if p.user_id == user.user_id { word_score } else { 0 },
+                            }
+                        })
+                        .collect();
+
+                    broadcast_to_lobby(
+                        state,
+                        &lobby_id,
+                        ServerMessage::RoundEnd {
+                            scores,
+                            next_round: new_round as i32,
+                        },
+                    )
+                    .await;
+
+                    tracing::info!(
+                        "Game {} round {} complete, starting round {}",
+                        game_uuid,
+                        game_state.current_round,
+                        new_round
+                    );
+                }
+            }
         }
 
         ClientMessage::PassTurn => {
@@ -1116,64 +1266,156 @@ async fn handle_client_message(
                     }
                 };
 
-            // Determine next player
-            let current_idx = game_state.current_player_index;
-            let next_idx = (current_idx + 1) % game_state.players.len();
-            let _next_player = &game_state.players[next_idx];
-
-            // Update DB
             let game_uuid = game_state.game_id;
-            // Note: We need the user_id (i64) for the DB update, but GamePlayer struct has user_id as Uuid (in-memory) or i64?
-            // Let's check GamePlayer definition. In db/queries.rs it says:
-            // user_id: Uuid::new_v4(), // Generate a UUID for in-memory tracking
-            // Wait, that's a problem. We need the real user_id (i64) to update the DB.
-            // The GameState struct in models/game.rs uses Uuid for user_id?
-            // Let's look at how we get the next player's ID.
 
-            // Actually, we should probably look up the player in the `players` list from `get_active_game_for_lobby`
-            // But `get_active_game_for_lobby` generates fake UUIDs for `user_id` in `GamePlayer` struct?
-            // Line 476 in queries.rs: `user_id: Uuid::new_v4(),`
-            // This seems wrong if we need to reference them back.
-            // However, `current_turn_player` in `games` table is `i64`.
-
-            // For now, let's try to get the real user_id from the `game_players` table again or fix `get_active_game_for_lobby`.
-            // But I can't easily change `get_active_game_for_lobby` right now without seeing `models/game.rs`.
-            // Let's assume we can get the player's real ID by re-querying or using the index.
-
-            // Re-query game players to get real IDs
-            let players = db::queries::get_game_players(&state.db, game_uuid)
+            // Get player records to map user_ids properly
+            let player_records = db::queries::get_game_players(&state.db, game_uuid)
                 .await
                 .unwrap_or_default();
-            if players.is_empty() {
+            if player_records.is_empty() {
                 return Ok(());
             }
 
-            // Sort by team/joined_at to match the order in GameState
-            // The order should be consistent.
-            let next_player_record = &players[next_idx];
-            let next_player_id = next_player_record.user_id;
+            // Validate turn - check if it's this player's turn
+            let current_turn_player_id = player_records
+                .get(game_state.current_player_index)
+                .map(|p| p.user_id);
 
-            if let Err(e) = db::queries::update_game_round(
-                &state.db,
-                game_uuid,
-                game_state.current_round as i32,
-                next_player_id,
-            )
-            .await
-            {
-                tracing::error!("Failed to update turn: {}", e);
+            if current_turn_player_id != Some(user.user_id) {
+                tx.send(ServerMessage::GameError {
+                    code: "not_your_turn".to_string(),
+                    message: "It's not your turn".to_string(),
+                })
+                .await?;
+                return Ok(());
             }
 
-            // Broadcast update
-            broadcast_to_lobby(
-                state,
-                &lobby_id,
-                ServerMessage::TurnUpdate {
-                    current_player: next_player_id,
-                    time_remaining: None,
-                },
-            )
-            .await;
+            // Advance turn to next player
+            let num_players = player_records.len();
+            let current_idx = game_state.current_player_index;
+            let next_idx = (current_idx + 1) % num_players;
+
+            // Check if we've completed a round (wrapped back to first player)
+            let round_complete =
+                next_idx < current_idx || (next_idx == 0 && current_idx == num_players - 1);
+            let new_round = if round_complete {
+                game_state.current_round + 1
+            } else {
+                game_state.current_round
+            };
+
+            // Check if game is over
+            if new_round > game_state.total_rounds {
+                // Game is finished - find winner
+                let winner_id = player_records
+                    .iter()
+                    .max_by_key(|p| p.score)
+                    .map(|p| p.user_id);
+
+                // Update game state in DB
+                if let Err(e) = db::queries::finish_game(&state.db, game_uuid, winner_id).await {
+                    tracing::error!("Failed to finish game: {}", e);
+                }
+
+                // Clear active game from lobby
+                if let Some(mut lobby) = state.lobbies.get_mut(&lobby_id) {
+                    lobby.active_game_id = None;
+                }
+
+                // Build final scores
+                let final_scores: Vec<crate::websocket::messages::ScoreInfo> = player_records
+                    .iter()
+                    .map(|p| {
+                        let username = game_state
+                            .players
+                            .get(p.team.unwrap_or(0) as usize)
+                            .map(|gp| gp.username.clone())
+                            .unwrap_or_else(|| format!("Player {}", p.user_id));
+                        crate::websocket::messages::ScoreInfo {
+                            user_id: p.user_id,
+                            username,
+                            score: p.score,
+                        }
+                    })
+                    .collect();
+
+                broadcast_to_lobby(
+                    state,
+                    &lobby_id,
+                    ServerMessage::GameOver {
+                        winner: winner_id,
+                        final_scores,
+                    },
+                )
+                .await;
+
+                tracing::info!("Game {} finished (pass turn), winner: {:?}", game_uuid, winner_id);
+            } else {
+                // Game continues - update turn
+                let next_player_id = player_records
+                    .get(next_idx)
+                    .map(|p| p.user_id)
+                    .unwrap_or(0);
+
+                // Update DB with new round and current player
+                if let Err(e) = db::queries::update_game_round(
+                    &state.db,
+                    game_uuid,
+                    new_round as i32,
+                    next_player_id,
+                )
+                .await
+                {
+                    tracing::error!("Failed to update turn: {}", e);
+                }
+
+                // Broadcast turn update
+                broadcast_to_lobby(
+                    state,
+                    &lobby_id,
+                    ServerMessage::TurnUpdate {
+                        current_player: next_player_id,
+                        time_remaining: None,
+                    },
+                )
+                .await;
+
+                // If we just started a new round, broadcast RoundEnd
+                if round_complete && new_round <= game_state.total_rounds {
+                    let scores: Vec<crate::websocket::messages::ScoreInfo> = player_records
+                        .iter()
+                        .map(|p| {
+                            let username = game_state
+                                .players
+                                .get(p.team.unwrap_or(0) as usize)
+                                .map(|gp| gp.username.clone())
+                                .unwrap_or_else(|| format!("Player {}", p.user_id));
+                            crate::websocket::messages::ScoreInfo {
+                                user_id: p.user_id,
+                                username,
+                                score: p.score,
+                            }
+                        })
+                        .collect();
+
+                    broadcast_to_lobby(
+                        state,
+                        &lobby_id,
+                        ServerMessage::RoundEnd {
+                            scores,
+                            next_round: new_round as i32,
+                        },
+                    )
+                    .await;
+
+                    tracing::info!(
+                        "Game {} round {} complete (pass turn), starting round {}",
+                        game_uuid,
+                        game_state.current_round,
+                        new_round
+                    );
+                }
+            }
         }
 
         ClientMessage::EnableTimer => {

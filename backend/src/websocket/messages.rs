@@ -139,6 +139,13 @@ pub enum ServerMessage {
         scores: Vec<ScoreInfo>,
         next_round: i32,
     },
+    /// Sent after a word is scored to update the grid with replaced letters
+    GridUpdate {
+        /// The updated grid with new letters at the used positions
+        grid: Vec<Vec<GridCell>>,
+        /// The positions that were replaced
+        replaced_positions: Vec<Position>,
+    },
     GameOver {
         winner: Option<i64>,
         final_scores: Vec<ScoreInfo>,

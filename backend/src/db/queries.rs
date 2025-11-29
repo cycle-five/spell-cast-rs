@@ -618,6 +618,20 @@ pub async fn update_game_board_used_words(
     Ok(())
 }
 
+/// Update the grid for a game board (e.g., after replacing used letters)
+pub async fn update_game_board_grid(
+    pool: &PgPool,
+    game_id: Uuid,
+    grid: &serde_json::Value,
+) -> Result<()> {
+    sqlx::query("UPDATE game_boards SET grid = $1, updated_at = NOW() WHERE game_id = $2")
+        .bind(grid)
+        .bind(game_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Mark a game as finished with final results
 pub async fn finish_game(pool: &PgPool, game_id: Uuid, winner_id: Option<i64>) -> Result<()> {
     sqlx::query(

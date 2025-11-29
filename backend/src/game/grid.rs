@@ -35,6 +35,24 @@ impl GridGenerator {
         grid
     }
 
+    /// Replace letters at the specified positions with new random letters.
+    /// Multipliers are preserved on the cells.
+    pub fn replace_letters(grid: &mut Grid, positions: &[crate::models::Position]) {
+        let mut rng = rand::rng();
+        let cumulative_dist = get_cumulative_distribution();
+        let total = cumulative_dist.last().unwrap().1;
+
+        for pos in positions {
+            if pos.row < grid.len() && pos.col < grid[pos.row].len() {
+                let new_letter = Self::random_letter(&cumulative_dist, total, &mut rng);
+                let cell = &mut grid[pos.row][pos.col];
+                cell.letter = new_letter;
+                cell.value = get_letter_value(new_letter);
+                // Multiplier is preserved
+            }
+        }
+    }
+
     fn random_letter(cumulative_dist: &[(char, f32)], total: f32, rng: &mut impl Rng) -> char {
         let random_value = rng.random::<f32>() * total;
 
