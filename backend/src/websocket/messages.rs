@@ -2,6 +2,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::{GameMode, GridCell, Position};
 
+/// Player information sent with GameStarted message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GamePlayerInfo {
+    pub user_id: String,
+    pub username: String,
+    pub avatar_url: Option<String>,
+    pub turn_order: u8,
+}
+
 /// Type of lobby
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -88,7 +97,26 @@ pub enum ServerMessage {
     PlayerLeft {
         user_id: i64,
     },
-    GameStarted,
+    /// Sent to all players when a game starts
+    GameStarted {
+        /// Unique identifier for the game
+        game_id: String,
+        /// The 5x5 letter grid with multipliers
+        grid: Vec<Vec<GridCell>>,
+        /// All players in the game with their turn order
+        players: Vec<GamePlayerInfo>,
+        /// User ID of the player who goes first
+        current_player_id: String,
+        /// Total number of rounds in the game
+        total_rounds: u8,
+    },
+    /// Game-specific error (e.g., validation failures when starting a game)
+    GameError {
+        /// Error code (e.g., "not_host", "not_enough_players", "game_in_progress")
+        code: String,
+        /// Human-readable error message
+        message: String,
+    },
     TurnUpdate {
         current_player: i64,
         time_remaining: Option<u32>,

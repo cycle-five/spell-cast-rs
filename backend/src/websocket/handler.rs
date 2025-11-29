@@ -8,12 +8,14 @@ use axum::{
     response::IntoResponse,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
+use rand::seq::SliceRandom;
 use tokio::sync::mpsc;
 
 use crate::{
     auth::AuthenticatedUser,
     db,
-    websocket::messages::{ClientMessage, LobbyPlayerInfo, LobbyType, ServerMessage},
+    game::grid::GridGenerator,
+    websocket::messages::{ClientMessage, GamePlayerInfo, LobbyPlayerInfo, LobbyType, ServerMessage},
     AppState, Lobby, LobbyPlayer, PlayerConnectionState,
 };
 
@@ -152,13 +154,14 @@ async fn fetch_user_avatar(state: &AppState, user_id: i64) -> Option<String> {
 }
 
 /// Add a player to a lobby (or reconnect if already present)
+/// Returns (lobby_type, lobby_code, is_host) tuple if successful
 async fn add_player_to_lobby(
     state: &AppState,
     lobby_id: &str,
     user: &AuthenticatedUser,
     avatar_url: Option<String>,
     tx: mpsc::Sender<ServerMessage>,
-) -> Option<(LobbyType, Option<String>)> {
+) -> Option<(LobbyType, Option<String>, bool)> {
     // Get the lobby
     let result = if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
         // Check if player is already in lobby (reconnecting)
@@ -195,8 +198,9 @@ async fn add_player_to_lobby(
 
             let lobby_type = lobby.lobby_type.clone();
             let lobby_code = lobby.lobby_code.clone();
+            let is_host = lobby.is_host(user.user_id);
 
-            Some((lobby_type, lobby_code))
+            Some((lobby_type, lobby_code, is_host))
         } else {
             // New player joining
             let lobby_player = LobbyPlayer {
@@ -212,6 +216,20 @@ async fn add_player_to_lobby(
             // Clear empty_since since we have a player now
             lobby.empty_since = None;
 
+            // Assign host if no current host
+            let is_host = if lobby.host_id.is_none() {
+                lobby.host_id = Some(user.user_id);
+                tracing::info!(
+                    "Player {} ({}) is now the host of lobby {}",
+                    user.username,
+                    user.user_id,
+                    lobby_id
+                );
+                true
+            } else {
+                lobby.is_host(user.user_id)
+            };
+
             let lobby_type = lobby.lobby_type.clone();
             let lobby_code = lobby.lobby_code.clone();
 
@@ -223,7 +241,7 @@ async fn add_player_to_lobby(
                 lobby_type
             );
 
-            Some((lobby_type, lobby_code))
+            Some((lobby_type, lobby_code, is_host))
         }
     } else {
         tracing::warn!("Lobby {} not found when adding player", lobby_id);
@@ -386,6 +404,197 @@ pub async fn broadcast_lobby_player_list(state: &AppState, lobby_id: &str) {
     }
 }
 
+/// Broadcast a message to all connected players in a lobby
+async fn broadcast_to_lobby(state: &AppState, lobby_id: &str, message: ServerMessage) {
+    if let Some(lobby) = state.lobbies.get(lobby_id) {
+        for entry in lobby.players.iter() {
+            if entry.is_connected() {
+                let _ = entry.tx.send(message.clone()).await;
+            }
+        }
+    }
+}
+
+/// Handle the StartGame message - validates and starts a new game
+/// Returns Ok(GameStarted message) on success, or Err(GameError message) on failure
+async fn handle_start_game(
+    state: &AppState,
+    lobby_id: &str,
+    user: &AuthenticatedUser,
+) -> Result<ServerMessage, ServerMessage> {
+    // Get lobby and validate
+    let lobby = state.lobbies.get(lobby_id).ok_or_else(|| ServerMessage::GameError {
+        code: "lobby_not_found".to_string(),
+        message: "Lobby not found".to_string(),
+    })?;
+
+    // 1. Validate sender is lobby host
+    if !lobby.is_host(user.user_id) {
+        return Err(ServerMessage::GameError {
+            code: "not_host".to_string(),
+            message: "Only the lobby host can start the game".to_string(),
+        });
+    }
+
+    // 2. Check for duplicate game (game already in progress)
+    if lobby.has_active_game() {
+        return Err(ServerMessage::GameError {
+            code: "game_in_progress".to_string(),
+            message: "A game is already in progress in this lobby".to_string(),
+        });
+    }
+
+    // 3. Validate player count (2-6 players)
+    let connected_count = lobby.connected_player_count();
+    if connected_count < 2 {
+        return Err(ServerMessage::GameError {
+            code: "not_enough_players".to_string(),
+            message: format!(
+                "At least 2 players are required to start a game (currently {})",
+                connected_count
+            ),
+        });
+    }
+    if connected_count > 6 {
+        return Err(ServerMessage::GameError {
+            code: "too_many_players".to_string(),
+            message: format!(
+                "Maximum 6 players allowed (currently {})",
+                connected_count
+            ),
+        });
+    }
+
+    // 4. Generate 5x5 grid with multipliers
+    let grid = GridGenerator::generate();
+
+    // 5. Collect and shuffle player order
+    let mut players_info: Vec<GamePlayerInfo> = lobby
+        .players
+        .iter()
+        .filter(|p| p.is_connected())
+        .map(|p| GamePlayerInfo {
+            user_id: p.user_id.to_string(),
+            username: p.username.clone(),
+            avatar_url: p.avatar_url.clone(),
+            turn_order: 0, // Will be assigned after shuffle
+        })
+        .collect();
+
+    // Drop the lobby ref before any operations that might await
+    drop(lobby);
+
+    // Shuffle player order (using thread_rng in a non-async block)
+    {
+        let mut rng = rand::rng();
+        players_info.shuffle(&mut rng);
+    }
+
+    // Assign turn orders after shuffle
+    for (idx, player) in players_info.iter_mut().enumerate() {
+        player.turn_order = idx as u8;
+    }
+
+    // Get the first player (current turn)
+    let current_player_id = players_info
+        .first()
+        .map(|p| p.user_id.clone())
+        .unwrap_or_default();
+
+    // 6. Persist game session to database
+    let total_rounds: u8 = 5; // Default 5 rounds
+
+    // Collect player user_ids for database batch insert
+    let player_tuples: Vec<(i64, u8)> = players_info
+        .iter()
+        .map(|p| {
+            (
+                p.user_id.parse::<i64>().unwrap_or_default(),
+                p.turn_order,
+            )
+        })
+        .collect();
+
+    // Create game session in database
+    let game_id = db::queries::create_game_session(
+        &state.db,
+        lobby_id,
+        user.user_id,
+        total_rounds,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to create game session: {}", e);
+        ServerMessage::GameError {
+            code: "database_error".to_string(),
+            message: "Failed to create game session".to_string(),
+        }
+    })?;
+
+    // Add players to game
+    db::queries::add_game_players_batch(&state.db, game_id, &player_tuples)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to add players to game: {}", e);
+            ServerMessage::GameError {
+                code: "database_error".to_string(),
+                message: "Failed to add players to game".to_string(),
+            }
+        })?;
+
+    // Save the grid to database
+    let grid_json = serde_json::to_value(&grid).map_err(|e| {
+        tracing::error!("Failed to serialize grid: {}", e);
+        ServerMessage::GameError {
+            code: "serialization_error".to_string(),
+            message: "Failed to serialize game grid".to_string(),
+        }
+    })?;
+
+    db::queries::create_or_update_game_board(&state.db, game_id, grid_json)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to create game board: {}", e);
+            ServerMessage::GameError {
+                code: "database_error".to_string(),
+                message: "Failed to create game board".to_string(),
+            }
+        })?;
+
+    // Update game state to active
+    db::queries::update_game_db_state(&state.db, game_id, crate::models::GameDbState::Active)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update game state: {}", e);
+            ServerMessage::GameError {
+                code: "database_error".to_string(),
+                message: "Failed to update game state".to_string(),
+            }
+        })?;
+
+    // 7. Link game to lobby
+    if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
+        lobby.active_game_id = Some(game_id);
+    }
+
+    tracing::info!(
+        "Game {} started in lobby {} by host {} with {} players",
+        game_id,
+        lobby_id,
+        user.username,
+        players_info.len()
+    );
+
+    // 8. Return GameStarted message for broadcast
+    Ok(ServerMessage::GameStarted {
+        game_id: game_id.to_string(),
+        grid,
+        players: players_info,
+        current_player_id,
+        total_rounds,
+    })
+}
+
 /// Handle individual client messages
 async fn handle_client_message(
     msg: ClientMessage,
@@ -423,7 +632,7 @@ async fn handle_client_message(
 
             // Fetch avatar and add to lobby (handles reconnection)
             let avatar_url = fetch_user_avatar(state, user.user_id).await;
-            if let Some((lobby_type, lobby_code)) =
+            if let Some((lobby_type, lobby_code, _is_host)) =
                 add_player_to_lobby(state, &lobby_id, user, avatar_url, tx.clone()).await
             {
                 // Send confirmation
@@ -465,7 +674,7 @@ async fn handle_client_message(
             .await?;
 
             // Then add player and send joined confirmation
-            if let Some((lobby_type, lobby_code)) =
+            if let Some((lobby_type, lobby_code, _is_host)) =
                 add_player_to_lobby(state, &lobby_id, user, avatar_url, tx.clone()).await
             {
                 tx.send(ServerMessage::LobbyJoined {
@@ -510,7 +719,7 @@ async fn handle_client_message(
 
             // Fetch avatar and add to lobby
             let avatar_url = fetch_user_avatar(state, user.user_id).await;
-            if let Some((lobby_type, lobby_code)) =
+            if let Some((lobby_type, lobby_code, _is_host)) =
                 add_player_to_lobby(state, &lobby_id, user, avatar_url, tx.clone()).await
             {
                 tx.send(ServerMessage::LobbyJoined {
@@ -560,7 +769,32 @@ async fn handle_client_message(
 
         ClientMessage::StartGame => {
             tracing::info!("User {} ({}) starting game", user.username, user.user_id);
-            // TODO: Implement start game logic
+
+            // Get the player's current lobby
+            let context = player_context.lock().await;
+            let lobby_id = match &context.lobby_id {
+                Some(id) => id.clone(),
+                None => {
+                    tx.send(ServerMessage::GameError {
+                        code: "not_in_lobby".to_string(),
+                        message: "You must be in a lobby to start a game".to_string(),
+                    })
+                    .await?;
+                    return Ok(());
+                }
+            };
+            drop(context);
+
+            // Validate and start the game
+            match handle_start_game(state, &lobby_id, user).await {
+                Ok(game_started_msg) => {
+                    // Broadcast GameStarted to all players in the lobby
+                    broadcast_to_lobby(state, &lobby_id, game_started_msg).await;
+                }
+                Err(error_msg) => {
+                    tx.send(error_msg).await?;
+                }
+            }
         }
 
         ClientMessage::SubmitWord { word, positions } => {

@@ -87,6 +87,10 @@ pub struct Lobby {
     pub guild_id: Option<String>,
     /// Players in the lobby, keyed by user_id
     pub players: DashMap<i64, LobbyPlayer>,
+    /// The user ID of the lobby host (first player to join or assigned after host leaves)
+    pub host_id: Option<i64>,
+    /// The active game ID if a game is in progress
+    pub active_game_id: Option<Uuid>,
     /// When the lobby was created
     pub created_at: Instant,
     /// When the lobby became empty (for cleanup grace period)
@@ -103,6 +107,8 @@ impl Lobby {
             channel_id: Some(channel_id),
             guild_id,
             players: DashMap::new(),
+            host_id: None,
+            active_game_id: None,
             created_at: Instant::now(),
             empty_since: None,
         }
@@ -118,9 +124,21 @@ impl Lobby {
             channel_id: None,
             guild_id: None,
             players: DashMap::new(),
+            host_id: None,
+            active_game_id: None,
             created_at: Instant::now(),
             empty_since: None,
         }
+    }
+
+    /// Check if a user is the host of this lobby
+    pub fn is_host(&self, user_id: i64) -> bool {
+        self.host_id == Some(user_id)
+    }
+
+    /// Check if the lobby has an active game in progress
+    pub fn has_active_game(&self) -> bool {
+        self.active_game_id.is_some()
     }
 
     /// Count of actively connected players (excludes disconnected ones in grace period)
