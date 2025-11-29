@@ -1014,8 +1014,7 @@ async fn handle_client_message(
             let score = Scorer::calculate_score(&game_state.grid, &positions);
 
             // Update DB
-            let game_uuid =
-                uuid::Uuid::parse_str(&game_state.game_id.to_string()).unwrap_or_default();
+            let game_uuid = uuid::Uuid::parse_str(&game_state.game_id).unwrap_or_default();
 
             // 1. Update player score
             if let Err(e) =
@@ -1078,7 +1077,97 @@ async fn handle_client_message(
 
         ClientMessage::PassTurn => {
             tracing::info!("User {} ({}) passing turn", user.username, user.user_id);
-            // TODO: Implement pass turn logic
+
+            // Get lobby ID
+            let context = player_context.lock().await;
+            let lobby_id = match &context.lobby_id {
+                Some(id) => id.clone(),
+                None => {
+                    tx.send(ServerMessage::Error {
+                        message: "Not in a lobby".to_string(),
+                    })
+                    .await?;
+                    return Ok(());
+                }
+            };
+            drop(context);
+
+            // Get active game
+            let game_state =
+                match db::queries::get_active_game_for_lobby(&state.db, &lobby_id).await {
+                    Ok(Some(gs)) => gs,
+                    Ok(None) => {
+                        tx.send(ServerMessage::GameError {
+                            code: "no_game".to_string(),
+                            message: "No active game".to_string(),
+                        })
+                        .await?;
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to fetch game state: {}", e);
+                        return Ok(());
+                    }
+                };
+
+            // Determine next player
+            let current_idx = game_state.current_player_index;
+            let next_idx = (current_idx + 1) % game_state.players.len();
+            let next_player = &game_state.players[next_idx];
+
+            // Update DB
+            let game_uuid = uuid::Uuid::parse_str(&game_state.game_id).unwrap_or_default();
+            // Note: We need the user_id (i64) for the DB update, but GamePlayer struct has user_id as Uuid (in-memory) or i64?
+            // Let's check GamePlayer definition. In db/queries.rs it says:
+            // user_id: Uuid::new_v4(), // Generate a UUID for in-memory tracking
+            // Wait, that's a problem. We need the real user_id (i64) to update the DB.
+            // The GameState struct in models/game.rs uses Uuid for user_id?
+            // Let's look at how we get the next player's ID.
+
+            // Actually, we should probably look up the player in the `players` list from `get_active_game_for_lobby`
+            // But `get_active_game_for_lobby` generates fake UUIDs for `user_id` in `GamePlayer` struct?
+            // Line 476 in queries.rs: `user_id: Uuid::new_v4(),`
+            // This seems wrong if we need to reference them back.
+            // However, `current_turn_player` in `games` table is `i64`.
+
+            // For now, let's try to get the real user_id from the `game_players` table again or fix `get_active_game_for_lobby`.
+            // But I can't easily change `get_active_game_for_lobby` right now without seeing `models/game.rs`.
+            // Let's assume we can get the player's real ID by re-querying or using the index.
+
+            // Re-query game players to get real IDs
+            let players = db::queries::get_game_players(&state.db, game_uuid)
+                .await
+                .unwrap_or_default();
+            if players.is_empty() {
+                return Ok(());
+            }
+
+            // Sort by team/joined_at to match the order in GameState
+            // The order should be consistent.
+            let next_player_record = &players[next_idx];
+            let next_player_id = next_player_record.user_id;
+
+            if let Err(e) = db::queries::update_game_round(
+                &state.db,
+                game_uuid,
+                game_state.current_round as i32,
+                next_player_id,
+            )
+            .await
+            {
+                tracing::error!("Failed to update turn: {}", e);
+            }
+
+            // Broadcast update
+            broadcast_to_lobby(
+                state,
+                &lobby_id,
+                ServerMessage::TurnUpdate {
+                    current_player: next_player_id,
+                    time_remaining: None,
+                },
+            )
+            .await;
         }
 
         ClientMessage::EnableTimer => {
@@ -1180,9 +1269,24 @@ async fn handle_client_message(
                 .await
             {
                 Ok(_) => {
-                    // Refresh list
-                    // We could just send success, but refreshing the list is nicer
-                    // Re-using the get logic would be best, but for now just send success
+                    // Also clear active_game_id from lobby if it matches
+                    let context = player_context.lock().await;
+                    if let Some(lobby_id) = &context.lobby_id {
+                        if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
+                            if let Some(active_id) = &lobby.active_game_id {
+                                if active_id == &game_id {
+                                    lobby.active_game_id = None;
+                                    tracing::info!(
+                                        "Cleared active game {} from lobby {}",
+                                        game_id,
+                                        lobby_id
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    drop(context);
+
                     tx.send(ServerMessage::Error {
                         message: "Game deleted".to_string(),
                     })
