@@ -254,22 +254,7 @@ pub async fn create_game_session(
     let game_id = Uuid::new_v4();
 
     // Parse lobby_id to extract channel_id and guild_id
-    let (channel_id, guild_id): (i64, Option<i64>) = if lobby_id.starts_with("channel:") {
-        // Channel-based lobby: "channel:123456789"
-        let channel_str = lobby_id.strip_prefix("channel:").unwrap_or("0");
-        let channel = channel_str.parse::<i64>().unwrap_or(0);
-        (channel, None) // Guild ID would need to be passed separately if needed
-    } else if lobby_id.starts_with("custom:") {
-        // Custom lobby: "custom:ABC123" - use 0 as channel_id placeholder
-        // We encode the lobby code into a negative number to distinguish from real channel IDs
-        let code = lobby_id.strip_prefix("custom:").unwrap_or("");
-        let encoded = encode_lobby_code_to_i64(code);
-        (encoded, None)
-    } else {
-        // Fallback: try to parse as raw channel ID
-        let channel = lobby_id.parse::<i64>().unwrap_or(0);
-        (channel, None)
-    };
+    let (channel_id, guild_id) = parse_lobby_id(lobby_id)?;
 
     sqlx::query(
         r#"
@@ -295,6 +280,50 @@ pub async fn create_game_session(
     .await?;
 
     Ok(game_id)
+}
+
+/// Parse a lobby_id string to extract channel_id and optional guild_id
+///
+/// # Arguments
+/// * `lobby_id` - Lobby identifier string in one of the following formats:
+///   - "channel:123456789" - Channel-based lobby
+///   - "custom:ABC123" - Custom lobby with alphanumeric code
+///   - "123456789" - Raw channel ID (fallback)
+///
+/// # Returns
+/// Result containing (channel_id, guild_id) tuple, or an error if parsing fails
+///
+/// # Errors
+/// Returns `sqlx::Error::Protocol` if the lobby_id format is invalid or cannot be parsed
+fn parse_lobby_id(lobby_id: &str) -> Result<(i64, Option<i64>)> {
+    if let Some(channel_str) = lobby_id.strip_prefix("channel:") {
+        // Channel-based lobby: "channel:123456789"
+        let channel = channel_str.parse::<i64>().map_err(|e| {
+            sqlx::Error::Protocol(format!(
+                "Failed to parse channel_id '{}': {}",
+                channel_str, e
+            ))
+        })?;
+        Ok((channel, None)) // Guild ID would need to be passed separately if needed
+    } else if let Some(code) = lobby_id.strip_prefix("custom:") {
+        // Custom lobby: "custom:ABC123" - encode the lobby code
+        if code.is_empty() {
+            return Err(sqlx::Error::Protocol(
+                "Custom lobby code cannot be empty".to_string(),
+            ));
+        }
+        let encoded = encode_lobby_code_to_i64(code);
+        Ok((encoded, None))
+    } else {
+        // Fallback: try to parse as raw channel ID
+        let channel = lobby_id.parse::<i64>().map_err(|e| {
+            sqlx::Error::Protocol(format!(
+                "Failed to parse lobby_id '{}' as channel ID: {}",
+                lobby_id, e
+            ))
+        })?;
+        Ok((channel, None))
+    }
 }
 
 /// Encode a lobby code (e.g., "ABC123") to a unique negative i64
@@ -396,15 +425,7 @@ pub async fn create_or_update_game_board(
 /// The active GameState if one exists, None otherwise
 pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<Option<GameState>> {
     // Parse lobby_id to get channel_id
-    let channel_id: i64 = if lobby_id.starts_with("channel:") {
-        let channel_str = lobby_id.strip_prefix("channel:").unwrap_or("0");
-        channel_str.parse::<i64>().unwrap_or(0)
-    } else if lobby_id.starts_with("custom:") {
-        let code = lobby_id.strip_prefix("custom:").unwrap_or("");
-        encode_lobby_code_to_i64(code)
-    } else {
-        lobby_id.parse::<i64>().unwrap_or(0)
-    };
+    let (channel_id, _guild_id) = parse_lobby_id(lobby_id)?;
 
     // Get the active game for this channel
     let game = sqlx::query_as::<_, Game>(
@@ -811,14 +832,12 @@ mod tests {
         let lobby_id = "channel:123456789";
         let expected_channel_id: i64 = 123456789;
 
-        let channel_id: i64 = if lobby_id.starts_with("channel:") {
-            let channel_str = lobby_id.strip_prefix("channel:").unwrap_or("0");
-            channel_str.parse::<i64>().unwrap_or(0)
-        } else {
-            0
-        };
+        let result = parse_lobby_id(lobby_id);
+        assert!(result.is_ok(), "Should successfully parse channel lobby ID");
 
+        let (channel_id, guild_id) = result.unwrap();
         assert_eq!(channel_id, expected_channel_id);
+        assert!(guild_id.is_none(), "Guild ID should be None for channel lobby");
     }
 
     #[test]
@@ -826,25 +845,28 @@ mod tests {
         // Test parsing of custom lobby IDs
         let lobby_id = "custom:ABC123";
 
-        let is_custom = lobby_id.starts_with("custom:");
-        assert!(is_custom, "Should be recognized as custom lobby");
+        let result = parse_lobby_id(lobby_id);
+        assert!(result.is_ok(), "Should successfully parse custom lobby ID");
 
-        let code = lobby_id.strip_prefix("custom:").unwrap_or("");
-        assert_eq!(code, "ABC123");
-
-        let encoded = encode_lobby_code_to_i64(code);
+        let (channel_id, guild_id) = result.unwrap();
         assert!(
-            encoded <= 0,
+            channel_id <= 0,
             "Custom lobby channel_id should be non-positive"
         );
+        assert!(guild_id.is_none(), "Guild ID should be None for custom lobby");
     }
 
     #[test]
     fn test_parse_raw_channel_id() {
         // Test parsing of raw channel IDs (fallback case)
         let lobby_id = "987654321";
-        let channel_id: i64 = lobby_id.parse().unwrap_or(0);
+
+        let result = parse_lobby_id(lobby_id);
+        assert!(result.is_ok(), "Should successfully parse raw channel ID");
+
+        let (channel_id, guild_id) = result.unwrap();
         assert_eq!(channel_id, 987654321);
+        assert!(guild_id.is_none(), "Guild ID should be None for raw channel ID");
     }
 
     #[test]
@@ -852,18 +874,35 @@ mod tests {
         // Test parsing of invalid lobby IDs
         let lobby_id = "invalid:format";
 
-        let channel_id: i64 = if lobby_id.starts_with("channel:") {
-            let channel_str = lobby_id.strip_prefix("channel:").unwrap_or("0");
-            channel_str.parse::<i64>().unwrap_or(0)
-        } else if lobby_id.starts_with("custom:") {
-            let code = lobby_id.strip_prefix("custom:").unwrap_or("");
-            encode_lobby_code_to_i64(code)
-        } else {
-            lobby_id.parse::<i64>().unwrap_or(0)
-        };
+        let result = parse_lobby_id(lobby_id);
+        assert!(
+            result.is_err(),
+            "Should return error for invalid lobby ID format"
+        );
+    }
 
-        // Invalid format should fall through to the raw parse, which returns 0 on failure
-        assert_eq!(channel_id, 0);
+    #[test]
+    fn test_parse_lobby_id_invalid_channel_number() {
+        // Test parsing of channel lobby ID with invalid number
+        let lobby_id = "channel:not_a_number";
+
+        let result = parse_lobby_id(lobby_id);
+        assert!(
+            result.is_err(),
+            "Should return error for invalid channel number"
+        );
+    }
+
+    #[test]
+    fn test_parse_lobby_id_empty_custom_code() {
+        // Test parsing of custom lobby ID with empty code
+        let lobby_id = "custom:";
+
+        let result = parse_lobby_id(lobby_id);
+        assert!(
+            result.is_err(),
+            "Should return error for empty custom lobby code"
+        );
     }
 
     // =========================================================================
