@@ -86,7 +86,7 @@ export class GameUI {
     }));
     this.renderPlayers(playersWithScore);
 
-    document.getElementById('current-round').textContent = 'Round 1';
+    document.getElementById('current-round').textContent = `Round ${data.round !== undefined ? data.round : 1}`;
     document.getElementById('max-rounds').textContent = data.totalRounds;
 
     // Reset other UI elements
