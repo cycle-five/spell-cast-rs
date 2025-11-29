@@ -10,6 +10,9 @@ use crate::{
     },
 };
 
+const DEFAULT_TIMER_DURATION: i32 = 30_i32; // seconds
+const DEFAULT_TIMER_DISABLED: bool = false;
+
 // User queries
 pub async fn get_user(pool: &PgPool, user_id: i64, encryption_key: &str) -> Result<Option<User>> {
     let mut user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
@@ -271,12 +274,12 @@ pub async fn create_game_session(
     .bind(guild_id)
     .bind(channel_id)
     .bind(GameMode::Multiplayer) // Default game mode
-    .bind("waiting") // Initial state
+    .bind(GameDbState::Waiting.to_string()) // Initial state
     .bind(1_i32) // Start at round 1
     .bind(total_rounds as i32)
     .bind(created_by) // Creator is first turn player
-    .bind(false) // Timer disabled by default
-    .bind(30_i32) // Default timer duration
+    .bind(DEFAULT_TIMER_DISABLED) // Timer disabled by default
+    .bind(DEFAULT_TIMER_DURATION) // Default timer duration
     .execute(pool)
     .await?;
 
@@ -483,7 +486,11 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
     // Parse the grid from JSON
     let grid: Vec<Vec<GridCell>> = if let Some(ref b) = board {
         serde_json::from_value(b.grid.clone()).map_err(|e| {
-            tracing::error!("Failed to deserialize grid for game {}: {}", game.game_id, e);
+            tracing::error!(
+                "Failed to deserialize grid for game {}: {}",
+                game.game_id,
+                e
+            );
             sqlx::Error::Protocol(format!("Invalid grid data: {}", e))
         })?
     } else {
@@ -493,7 +500,11 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
     // Parse used words from JSON
     let used_words: std::collections::HashSet<String> = if let Some(ref b) = board {
         serde_json::from_value(b.used_words.clone()).map_err(|e| {
-            tracing::error!("Failed to deserialize used_words for game {}: {}", game.game_id, e);
+            tracing::error!(
+                "Failed to deserialize used_words for game {}: {}",
+                game.game_id,
+                e
+            );
             sqlx::Error::Protocol(format!("Invalid used_words data: {}", e))
         })?
     } else {
@@ -844,7 +855,10 @@ mod tests {
 
         let (channel_id, guild_id) = result.unwrap();
         assert_eq!(channel_id, expected_channel_id);
-        assert!(guild_id.is_none(), "Guild ID should be None for channel lobby");
+        assert!(
+            guild_id.is_none(),
+            "Guild ID should be None for channel lobby"
+        );
     }
 
     #[test]
@@ -860,7 +874,10 @@ mod tests {
             channel_id <= 0,
             "Custom lobby channel_id should be non-positive"
         );
-        assert!(guild_id.is_none(), "Guild ID should be None for custom lobby");
+        assert!(
+            guild_id.is_none(),
+            "Guild ID should be None for custom lobby"
+        );
     }
 
     #[test]
@@ -873,7 +890,10 @@ mod tests {
 
         let (channel_id, guild_id) = result.unwrap();
         assert_eq!(channel_id, 987654321);
-        assert!(guild_id.is_none(), "Guild ID should be None for raw channel ID");
+        assert!(
+            guild_id.is_none(),
+            "Guild ID should be None for raw channel ID"
+        );
     }
 
     #[test]
