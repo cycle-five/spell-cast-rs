@@ -279,19 +279,32 @@ pub struct Position {
     pub col: usize,
 }
 
+/// Multiplier types for grid cells
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Multiplier {
+    /// Double Letter - multiplies this letter's value by 2
     #[serde(rename = "DL")]
     DoubleLetter,
+    /// Triple Letter - multiplies this letter's value by 3
     #[serde(rename = "TL")]
     TripleLetter,
+    /// Double Word - multiplies the entire word's score by 2 (the "pink 2x")
+    #[serde(rename = "DW")]
+    DoubleWord,
 }
 
+/// A single cell in the 5x5 game grid
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GridCell {
+    /// The letter in this cell
     pub letter: char,
+    /// Base point value of the letter
     pub value: u8,
+    /// Optional multiplier (DL, TL, or DW)
     pub multiplier: Option<Multiplier>,
+    /// Whether this cell contains a gem (for gem collection)
+    #[serde(default)]
+    pub has_gem: bool,
 }
 
 // TODO: Grid type will be used when game engine is fully integrated
@@ -309,23 +322,27 @@ mod tests {
                     letter: 'A',
                     value: 1,
                     multiplier: None,
+                    has_gem: false,
                 },
                 GridCell {
                     letter: 'B',
-                    value: 3,
+                    value: 4,
                     multiplier: Some(Multiplier::DoubleLetter),
+                    has_gem: false,
                 },
             ],
             vec![
                 GridCell {
                     letter: 'C',
-                    value: 3,
+                    value: 5,
                     multiplier: None,
+                    has_gem: true,
                 },
                 GridCell {
                     letter: 'D',
-                    value: 2,
+                    value: 3,
                     multiplier: Some(Multiplier::TripleLetter),
+                    has_gem: false,
                 },
             ],
         ]
@@ -508,21 +525,24 @@ mod tests {
     fn test_grid_cell_serialization() {
         let cell = GridCell {
             letter: 'Q',
-            value: 10,
+            value: 8, // SpellCast Q value
             multiplier: Some(Multiplier::TripleLetter),
+            has_gem: true,
         };
 
         let json = serde_json::to_string(&cell).unwrap();
         assert!(json.contains(r#""letter":"Q""#));
-        assert!(json.contains(r#""value":10"#));
+        assert!(json.contains(r#""value":8"#));
         assert!(json.contains(r#""TL""#));
+        assert!(json.contains(r#""has_gem":true"#));
 
         let deserialized: GridCell = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.letter, 'Q');
-        assert_eq!(deserialized.value, 10);
+        assert_eq!(deserialized.value, 8);
         assert!(matches!(
             deserialized.multiplier,
             Some(Multiplier::TripleLetter)
         ));
+        assert!(deserialized.has_gem);
     }
 }

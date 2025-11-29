@@ -2,43 +2,47 @@ use std::collections::HashMap;
 
 use once_cell::sync::Lazy;
 
-/// Letter values similar to Scrabble scoring
-/// TODO: Will be used by game engine once integrated
-#[allow(dead_code)]
+/// Letter values for SpellCast scoring
+/// Based on the official SpellCast point values
 pub static LETTER_VALUES: Lazy<HashMap<char, u8>> = Lazy::new(|| {
     let mut map = HashMap::new();
 
     // 1 point letters
-    for ch in ['A', 'E', 'I', 'O', 'U', 'L', 'N', 'R', 'S', 'T'] {
+    for ch in ['A', 'E', 'I', 'O'] {
         map.insert(ch, 1);
     }
 
     // 2 points
-    for ch in ['D', 'G'] {
+    for ch in ['N', 'R', 'S', 'T'] {
         map.insert(ch, 2);
     }
 
     // 3 points
-    for ch in ['B', 'C', 'M', 'P'] {
+    for ch in ['D', 'G', 'L'] {
         map.insert(ch, 3);
     }
 
     // 4 points
-    for ch in ['F', 'H', 'V', 'W', 'Y'] {
+    for ch in ['B', 'H', 'M', 'P', 'U', 'Y'] {
         map.insert(ch, 4);
     }
 
     // 5 points
-    map.insert('K', 5);
-
-    // 8 points
-    for ch in ['J', 'X'] {
-        map.insert(ch, 8);
+    for ch in ['C', 'F', 'V', 'W'] {
+        map.insert(ch, 5);
     }
 
-    // 10 points
+    // 6 points
+    map.insert('K', 6);
+
+    // 7 points
+    for ch in ['J', 'X'] {
+        map.insert(ch, 7);
+    }
+
+    // 8 points
     for ch in ['Q', 'Z'] {
-        map.insert(ch, 10);
+        map.insert(ch, 8);
     }
 
     map
@@ -107,10 +111,15 @@ mod tests {
 
     #[test]
     fn test_letter_values() {
-        assert_eq!(get_letter_value('E'), 1);
-        assert_eq!(get_letter_value('Q'), 10);
-        assert_eq!(get_letter_value('X'), 8);
-        assert_eq!(get_letter_value('D'), 2);
+        // SpellCast point values
+        assert_eq!(get_letter_value('E'), 1); // 1 point
+        assert_eq!(get_letter_value('N'), 2); // 2 points
+        assert_eq!(get_letter_value('D'), 3); // 3 points
+        assert_eq!(get_letter_value('B'), 4); // 4 points
+        assert_eq!(get_letter_value('C'), 5); // 5 points
+        assert_eq!(get_letter_value('K'), 6); // 6 points
+        assert_eq!(get_letter_value('X'), 7); // 7 points
+        assert_eq!(get_letter_value('Q'), 8); // 8 points
     }
 
     #[test]

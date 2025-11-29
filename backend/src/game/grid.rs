@@ -24,13 +24,15 @@ impl GridGenerator {
                     letter,
                     value: get_letter_value(letter),
                     multiplier: None,
+                    has_gem: false,
                 });
             }
             grid.push(row);
         }
 
-        // Add multipliers
+        // Add multipliers and gems
         Self::add_multipliers(&mut grid, &mut rng);
+        Self::add_gems(&mut grid, &mut rng);
 
         grid
     }
@@ -66,6 +68,12 @@ impl GridGenerator {
     }
 
     fn add_multipliers(grid: &mut Grid, rng: &mut impl Rng) {
+        // Add exactly 1 double word multiplier (the "pink 2x")
+        // This is the most valuable multiplier - doubles entire word score
+        let row = rng.random_range(0..5);
+        let col = rng.random_range(0..5);
+        grid[row][col].multiplier = Some(Multiplier::DoubleWord);
+
         // Add 3-5 double letter multipliers
         let dl_count = rng.random_range(3..=5);
         for _ in 0..dl_count {
@@ -84,6 +92,16 @@ impl GridGenerator {
             if grid[row][col].multiplier.is_none() {
                 grid[row][col].multiplier = Some(Multiplier::TripleLetter);
             }
+        }
+    }
+
+    /// Add gems to random cells (2-4 gems per grid)
+    fn add_gems(grid: &mut Grid, rng: &mut impl Rng) {
+        let gem_count = rng.random_range(2..=4);
+        for _ in 0..gem_count {
+            let row = rng.random_range(0..5);
+            let col = rng.random_range(0..5);
+            grid[row][col].has_gem = true;
         }
     }
 }

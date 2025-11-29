@@ -1050,6 +1050,7 @@ mod tests {
             letter: 'A',
             value: 1,
             multiplier: None,
+            has_gem: false,
         };
 
         let json = serde_json::to_value(&cell).expect("Failed to serialize GridCell");
@@ -1064,14 +1065,16 @@ mod tests {
 
         let cell = GridCell {
             letter: 'Q',
-            value: 10,
+            value: 8, // SpellCast Q value
             multiplier: Some(Multiplier::TripleLetter),
+            has_gem: true,
         };
 
         let json = serde_json::to_value(&cell).expect("Failed to serialize GridCell");
         assert_eq!(json["letter"], "Q");
-        assert_eq!(json["value"], 10);
+        assert_eq!(json["value"], 8);
         assert_eq!(json["multiplier"], "TL");
+        assert_eq!(json["has_gem"], true);
     }
 
     #[test]
@@ -1084,23 +1087,27 @@ mod tests {
                     letter: 'A',
                     value: 1,
                     multiplier: None,
+                    has_gem: false,
                 },
                 GridCell {
                     letter: 'B',
-                    value: 3,
+                    value: 4, // SpellCast B value
                     multiplier: Some(Multiplier::DoubleLetter),
+                    has_gem: true,
                 },
             ],
             vec![
                 GridCell {
                     letter: 'C',
-                    value: 3,
+                    value: 5, // SpellCast C value
                     multiplier: Some(Multiplier::TripleLetter),
+                    has_gem: false,
                 },
                 GridCell {
                     letter: 'D',
-                    value: 2,
+                    value: 3, // SpellCast D value
                     multiplier: None,
+                    has_gem: false,
                 },
             ],
         ];
