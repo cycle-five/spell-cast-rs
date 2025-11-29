@@ -509,7 +509,9 @@ async fn handle_start_game(
         .iter()
         .map(|p| {
             (
-                p.user_id.parse::<i64>().unwrap_or_default(),
+                p.user_id
+                    .parse::<i64>()
+                    .expect("Failed to parse user_id from GamePlayerInfo; this should never happen"),
                 p.turn_order,
             )
         })
