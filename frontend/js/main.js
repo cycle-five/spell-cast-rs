@@ -30,7 +30,7 @@ class App {
       this.gameClient = new GameClient(wsUrl);
 
       // Initialize UI
-      this.gameUI = new GameUI(this.gameClient);
+      this.gameUI = new GameUI(this.gameClient, discordResult.user.id);
 
       // Set up event listeners
       this.setupEventListeners();

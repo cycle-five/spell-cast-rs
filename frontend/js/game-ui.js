@@ -1,6 +1,7 @@
 export class GameUI {
-  constructor(gameClient) {
+  constructor(gameClient, userId) {
     this.gameClient = gameClient;
+    this.userId = userId;
     this.selectedTiles = [];
     this.currentGrid = null;
     this.gameId = null;
@@ -67,33 +68,65 @@ export class GameUI {
    * @param {number} data.totalRounds - Total number of rounds
    */
   initializeGame(data) {
-    console.log('Initializing game:', data);
+    try {
+      console.log('Initializing game:', data);
 
-    this.gameId = data.gameId;
-    this.currentPlayerId = data.currentPlayerId;
+      this.gameId = data.gameId;
+      this.currentPlayerId = data.currentPlayerId;
 
-    // Hide lobby, show game screen
-    document.getElementById('lobby-screen').classList.remove('active');
-    document.getElementById('game-screen').classList.add('active');
+      // Hide lobby, show game screen
+      document.getElementById('lobby-screen').classList.remove('active');
+      document.getElementById('game-screen').classList.add('active');
 
-    this.currentGrid = data.grid;
-    this.renderGrid(data.grid);
+      this.currentGrid = data.grid;
+      this.renderGrid(data.grid);
 
-    // Map GamePlayerInfo to format expected by renderPlayers (needs score)
-    const playersWithScore = data.players.map(p => ({
-      ...p,
-      score: 0 // Initial score
-    }));
-    this.renderPlayers(playersWithScore);
+      // Map GamePlayerInfo to format expected by renderPlayers (needs score)
+      const playersWithScore = data.players.map(p => ({
+        ...p,
+        score: 0 // Initial score
+      }));
+      this.renderPlayers(playersWithScore);
 
-    document.getElementById('current-round').textContent = `Round ${data.round !== undefined ? data.round : 1}`;
-    document.getElementById('max-rounds').textContent = data.totalRounds;
+      document.getElementById('current-round').textContent = 'Round 1';
+      document.getElementById('max-rounds').textContent = data.totalRounds;
 
-    // Reset other UI elements
-    document.getElementById('used-words-list').innerHTML = '';
-    document.getElementById('current-word').textContent = '';
-    document.getElementById('word-score').textContent = '0 pts';
-    this.selectedTiles = [];
+      // Update turn indicator
+      this.updateTurnIndicator(this.currentPlayerId);
+
+      // Reset other UI elements
+      document.getElementById('used-words-list').innerHTML = '';
+      document.getElementById('current-word').textContent = '';
+      document.getElementById('word-score').textContent = '0 pts';
+      this.selectedTiles = [];
+    } catch (error) {
+      console.error('Failed to initialize game:', error);
+      // We can't easily show a toast here if the UI is broken, but logging helps
+    }
+  }
+
+  updateTurnIndicator(currentPlayerId) {
+    const indicator = document.getElementById('turn-indicator');
+    if (indicator) {
+      // Check if it's my turn
+      // Note: userId might be string or number depending on source, so use loose equality or string conversion
+      const isMyTurn = String(currentPlayerId) === String(this.userId);
+      indicator.textContent = isMyTurn ? 'Your Turn!' : "Opponent's Turn";
+
+      // Toggle controls based on turn
+      const controls = document.querySelector('.game-controls');
+      if (controls) {
+        if (isMyTurn) {
+          controls.classList.remove('disabled');
+          controls.style.opacity = '1';
+          controls.style.pointerEvents = 'auto';
+        } else {
+          controls.classList.add('disabled');
+          controls.style.opacity = '0.5';
+          controls.style.pointerEvents = 'none';
+        }
+      }
+    }
   }
 
   renderGrid(grid) {
@@ -272,10 +305,8 @@ export class GameUI {
   }
 
   handleTurnUpdate(data) {
-    const indicator = document.getElementById('turn-indicator');
-    if (indicator) {
-      indicator.textContent = data.current_player === 'me' ? 'Your Turn!' : "Opponent's Turn";
-    }
+    this.currentPlayerId = data.current_player;
+    this.updateTurnIndicator(data.current_player);
   }
 
   handleRoundEnd(data) {
