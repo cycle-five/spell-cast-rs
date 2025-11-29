@@ -82,12 +82,57 @@
   color: white;
 }
 
+.tile.DW .multiplier {
+  background: #EB459E;
+  color: white;
+}
+
 .tile.DL {
   border-color: #3BA55D;
 }
 
 .tile.TL {
   border-color: #ED4245;
+}
+
+.tile.DW {
+  border-color: #EB459E;
+  background: linear-gradient(135deg, var(--surface-light) 0%, rgba(235, 69, 158, 0.15) 100%);
+}
+
+/* Gem indicator */
+.tile .gem {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 0.9rem;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+  animation: gem-sparkle 2s ease-in-out infinite;
+}
+
+@keyframes gem-sparkle {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+/* Tile with gem gets subtle glow */
+.tile.has-gem {
+  box-shadow: 0 0 8px rgba(236, 111, 187, 0.4);
+}
+
+.tile.has-gem::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 8px;
+  background: linear-gradient(45deg, transparent, rgba(236, 111, 187, 0.2), transparent);
+  pointer-events: none;
 }
 
 /* Selection Path Animation */
@@ -119,6 +164,26 @@
 .tile.shake {
   animation: shake 0.4s ease-in-out;
   border-color: var(--danger-color) !important;
+}
+
+/* Animation for tiles that were replaced with new letters */
+.tile.tile-replaced {
+  animation: tile-pop-in 0.5s ease-out;
+}
+
+@keyframes tile-pop-in {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+    background: rgba(88, 101, 242, 0.3);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 @keyframes shake {

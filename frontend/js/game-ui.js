@@ -44,6 +44,10 @@ export class GameUI {
     this.gameClient.on('game_over', (data) => {
       this.handleGameOver(data);
     });
+
+    this.gameClient.on('grid_update', (data) => {
+      this.handleGridUpdate(data);
+    });
   }
 
   handleGameState(data) {
@@ -158,6 +162,11 @@ export class GameUI {
       tile.classList.add(cell.multiplier);
     }
 
+    // Add gem class if cell has a gem
+    if (cell.has_gem) {
+      tile.classList.add('has-gem');
+    }
+
     const letterSpan = document.createElement('span');
     letterSpan.className = 'letter';
     letterSpan.textContent = cell.letter;
@@ -173,6 +182,14 @@ export class GameUI {
       multiplierSpan.className = 'multiplier';
       multiplierSpan.textContent = cell.multiplier;
       tile.appendChild(multiplierSpan);
+    }
+
+    // Add gem indicator if cell has a gem
+    if (cell.has_gem) {
+      const gemSpan = document.createElement('span');
+      gemSpan.className = 'gem';
+      gemSpan.textContent = '💎';
+      tile.appendChild(gemSpan);
     }
 
     tile.addEventListener('click', () => this.selectTile(row, col, tile));
@@ -284,8 +301,17 @@ export class GameUI {
     }
   }
 
+  /**
+   * Calculate score using SpellCast rules:
+   * - DL (Double Letter) multiplies letter value by 2
+   * - TL (Triple Letter) multiplies letter value by 3
+   * - DW (Double Word) multiplies entire word score by 2
+   * - +10 flat bonus for 6+ letter words (not multiplied by DW)
+   */
   calculateScore() {
-    let score = 0;
+    let letterTotal = 0;
+    let hasDoubleWord = false;
+    let gemsCollected = 0;
 
     this.selectedTiles.forEach(pos => {
       const cell = this.currentGrid[pos.row][pos.col];
@@ -295,20 +321,32 @@ export class GameUI {
         value *= 2;
       } else if (cell.multiplier === 'TL') {
         value *= 3;
+      } else if (cell.multiplier === 'DW') {
+        hasDoubleWord = true;
+        // Letter itself is not multiplied for DW, just the word total
       }
 
-      score += value;
+      letterTotal += value;
+
+      // Count gems
+      if (cell.has_gem) {
+        gemsCollected++;
+      }
     });
 
-    // Add length bonus
-    const length = this.selectedTiles.length;
-    if (length >= 4) score += 5;
-    if (length >= 5) score += 5;
-    if (length >= 6) score += 5;
-    if (length >= 7) score += 10;
-    if (length >= 8) score += 25;
+    // Apply double word multiplier if present
+    let wordScore = hasDoubleWord ? letterTotal * 2 : letterTotal;
 
-    return score;
+    // Add length bonus (+10 for 6+ letters, NOT multiplied by DW)
+    const length = this.selectedTiles.length;
+    if (length >= 6) {
+      wordScore += 10;
+    }
+
+    // Store gems collected for display (could show this in UI later)
+    this.lastGemsCollected = gemsCollected;
+
+    return wordScore;
   }
 
   clearSelection() {
@@ -391,6 +429,38 @@ export class GameUI {
   handleTurnUpdate(data) {
     this.currentPlayerId = data.current_player;
     this.updateTurnIndicator(data.current_player);
+  }
+
+  handleGridUpdate(data) {
+    console.log('Grid update received:', data);
+
+    // Update the current grid
+    this.currentGrid = data.grid;
+
+    // Re-render the grid with new letters
+    this.renderGrid(data.grid);
+
+    // Clear any selection since tiles have changed
+    this.selectedTiles = [];
+    this.updateWordDisplay();
+
+    // Optionally animate the replaced positions
+    if (data.replaced_positions && data.replaced_positions.length > 0) {
+      this.animateReplacedTiles(data.replaced_positions);
+    }
+  }
+
+  animateReplacedTiles(positions) {
+    const boardElement = document.getElementById('game-board');
+    positions.forEach(pos => {
+      const tile = boardElement.querySelector(`[data-row="${pos.row}"][data-col="${pos.col}"]`);
+      if (tile) {
+        tile.classList.add('tile-replaced');
+        setTimeout(() => {
+          tile.classList.remove('tile-replaced');
+        }, 600);
+      }
+    });
   }
 
   handleRoundEnd(data) {
