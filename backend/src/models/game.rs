@@ -100,7 +100,12 @@ pub struct GamePlayer {
 }
 
 impl GamePlayer {
-    pub fn new(user_id: Uuid, username: String, avatar_url: Option<String>, turn_order: u8) -> Self {
+    pub fn new(
+        user_id: Uuid,
+        username: String,
+        avatar_url: Option<String>,
+        turn_order: u8,
+    ) -> Self {
         Self {
             user_id,
             username,
@@ -145,10 +150,7 @@ impl GameState {
         players: Vec<GamePlayer>,
         total_rounds: u8,
     ) -> Self {
-        let round_submissions = players
-            .iter()
-            .map(|p| (p.user_id, false))
-            .collect();
+        let round_submissions = players.iter().map(|p| (p.user_id, false)).collect();
 
         Self {
             game_id,
@@ -203,10 +205,12 @@ impl GameState {
 
     /// Check if all connected players have submitted this round
     pub fn is_round_complete(&self) -> bool {
-        self.players
-            .iter()
-            .filter(|p| p.is_connected)
-            .all(|p| self.round_submissions.get(&p.user_id).copied().unwrap_or(false))
+        self.players.iter().filter(|p| p.is_connected).all(|p| {
+            self.round_submissions
+                .get(&p.user_id)
+                .copied()
+                .unwrap_or(false)
+        })
     }
 
     /// Mark a player as having submitted for this round
@@ -263,7 +267,7 @@ pub struct Position {
     pub col: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Multiplier {
     #[serde(rename = "DL")]
     DoubleLetter,
@@ -289,12 +293,28 @@ mod tests {
     fn create_test_grid() -> Vec<Vec<GridCell>> {
         vec![
             vec![
-                GridCell { letter: 'A', value: 1, multiplier: None },
-                GridCell { letter: 'B', value: 3, multiplier: Some(Multiplier::DoubleLetter) },
+                GridCell {
+                    letter: 'A',
+                    value: 1,
+                    multiplier: None,
+                },
+                GridCell {
+                    letter: 'B',
+                    value: 3,
+                    multiplier: Some(Multiplier::DoubleLetter),
+                },
             ],
             vec![
-                GridCell { letter: 'C', value: 3, multiplier: None },
-                GridCell { letter: 'D', value: 2, multiplier: Some(Multiplier::TripleLetter) },
+                GridCell {
+                    letter: 'C',
+                    value: 3,
+                    multiplier: None,
+                },
+                GridCell {
+                    letter: 'D',
+                    value: 2,
+                    multiplier: Some(Multiplier::TripleLetter),
+                },
             ],
         ]
     }
@@ -307,12 +327,7 @@ mod tests {
                 Some("https://cdn.discord.com/avatar1.png".to_string()),
                 0,
             ),
-            GamePlayer::new(
-                Uuid::new_v4(),
-                "Player2".to_string(),
-                None,
-                1,
-            ),
+            GamePlayer::new(Uuid::new_v4(), "Player2".to_string(), None, 1),
         ]
     }
 
@@ -366,12 +381,7 @@ mod tests {
 
     #[test]
     fn test_game_player_default_values() {
-        let player = GamePlayer::new(
-            Uuid::new_v4(),
-            "NewPlayer".to_string(),
-            None,
-            2,
-        );
+        let player = GamePlayer::new(Uuid::new_v4(), "NewPlayer".to_string(), None, 2);
 
         assert_eq!(player.score, 0);
         assert!(player.is_connected);
@@ -498,6 +508,9 @@ mod tests {
         let deserialized: GridCell = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.letter, 'Q');
         assert_eq!(deserialized.value, 10);
-        assert!(matches!(deserialized.multiplier, Some(Multiplier::TripleLetter)));
+        assert!(matches!(
+            deserialized.multiplier,
+            Some(Multiplier::TripleLetter)
+        ));
     }
 }

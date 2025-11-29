@@ -4,11 +4,22 @@ pub mod user;
 
 pub use game::{
     // Database models
-    Game, GameBoard, GameDbState, GameMode, GameMove, GamePlayerRecord, GamePersistenceState,
+    Game,
+    GameBoard,
+    GameDbState,
+    GameMode,
+    GameMove,
+    GamePersistenceState,
     // Live game state (for WebSocket/in-memory)
-    GamePlayer, GameState, GameStatus,
+    GamePlayer,
+    GamePlayerRecord,
+    GameState,
+    GameStatus,
     // Grid types
-    Grid, GridCell, Multiplier, Position,
+    Grid,
+    GridCell,
+    Multiplier,
+    Position,
 };
 pub use guild_profile::UserGuildProfile;
 pub use user::User;
