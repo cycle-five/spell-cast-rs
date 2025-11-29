@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     encryption,
-    models::{Game, GameBoard, GameMove, GamePlayer, User, UserGuildProfile},
+    models::{Game, GameBoard, GameMove, GamePlayerRecord, User, UserGuildProfile},
 };
 
 // User queries
@@ -177,8 +177,8 @@ pub async fn add_player_to_game(
     user_id: i64,
     team: Option<i32>,
     is_bot: bool,
-) -> Result<GamePlayer> {
-    sqlx::query_as::<_, GamePlayer>(
+) -> Result<GamePlayerRecord> {
+    sqlx::query_as::<_, GamePlayerRecord>(
         r#"
         INSERT INTO game_players (game_id, user_id, team, is_bot)
         VALUES ($1, $2, $3, $4)
@@ -193,8 +193,8 @@ pub async fn add_player_to_game(
     .await
 }
 
-pub async fn get_game_players(pool: &PgPool, game_id: Uuid) -> Result<Vec<GamePlayer>> {
-    sqlx::query_as::<_, GamePlayer>(
+pub async fn get_game_players(pool: &PgPool, game_id: Uuid) -> Result<Vec<GamePlayerRecord>> {
+    sqlx::query_as::<_, GamePlayerRecord>(
         "SELECT * FROM game_players WHERE game_id = $1 ORDER BY joined_at",
     )
     .bind(game_id)
