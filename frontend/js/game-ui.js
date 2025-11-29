@@ -12,6 +12,16 @@ export class GameUI {
       this.handleGameState(data);
     });
 
+    this.gameClient.on('game_started', (data) => {
+      this.initializeGame({
+        gameId: data.game_id,
+        grid: data.grid,
+        players: data.players,
+        currentPlayerId: data.current_player_id,
+        totalRounds: data.total_rounds
+      });
+    });
+
     this.gameClient.on('word_scored', (data) => {
       this.handleWordScored(data);
     });
@@ -43,6 +53,33 @@ export class GameUI {
 
     document.getElementById('current-round').textContent = `Round ${data.round}`;
     document.getElementById('max-rounds').textContent = data.max_rounds;
+  }
+
+  initializeGame(data) {
+    console.log('Initializing game:', data);
+    
+    // Hide lobby, show game screen
+    document.getElementById('lobby-screen').classList.remove('active');
+    document.getElementById('game-screen').classList.add('active');
+
+    this.currentGrid = data.grid;
+    this.renderGrid(data.grid);
+    
+    // Map GamePlayerInfo to format expected by renderPlayers (needs score)
+    const playersWithScore = data.players.map(p => ({
+      ...p,
+      score: 0 // Initial score
+    }));
+    this.renderPlayers(playersWithScore);
+    
+    document.getElementById('current-round').textContent = 'Round 1';
+    document.getElementById('max-rounds').textContent = data.totalRounds;
+    
+    // Reset other UI elements
+    document.getElementById('used-words-list').innerHTML = '';
+    document.getElementById('current-word').textContent = '';
+    document.getElementById('word-score').textContent = '0 pts';
+    this.selectedTiles = [];
   }
 
   renderGrid(grid) {
