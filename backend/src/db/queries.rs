@@ -486,7 +486,11 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
     // Parse the grid from JSON
     let grid: Vec<Vec<GridCell>> = if let Some(ref b) = board {
         serde_json::from_value(b.grid.clone()).map_err(|e| {
-            tracing::error!("Failed to deserialize grid for game {}: {}", game.game_id, e);
+            tracing::error!(
+                "Failed to deserialize grid for game {}: {}",
+                game.game_id,
+                e
+            );
             sqlx::Error::Protocol(format!("Invalid grid data: {}", e))
         })?
     } else {
@@ -496,7 +500,11 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
     // Parse used words from JSON
     let used_words: std::collections::HashSet<String> = if let Some(ref b) = board {
         serde_json::from_value(b.used_words.clone()).map_err(|e| {
-            tracing::error!("Failed to deserialize used_words for game {}: {}", game.game_id, e);
+            tracing::error!(
+                "Failed to deserialize used_words for game {}: {}",
+                game.game_id,
+                e
+            );
             sqlx::Error::Protocol(format!("Invalid used_words data: {}", e))
         })?
     } else {
@@ -847,7 +855,10 @@ mod tests {
 
         let (channel_id, guild_id) = result.unwrap();
         assert_eq!(channel_id, expected_channel_id);
-        assert!(guild_id.is_none(), "Guild ID should be None for channel lobby");
+        assert!(
+            guild_id.is_none(),
+            "Guild ID should be None for channel lobby"
+        );
     }
 
     #[test]
@@ -863,7 +874,10 @@ mod tests {
             channel_id <= 0,
             "Custom lobby channel_id should be non-positive"
         );
-        assert!(guild_id.is_none(), "Guild ID should be None for custom lobby");
+        assert!(
+            guild_id.is_none(),
+            "Guild ID should be None for custom lobby"
+        );
     }
 
     #[test]
@@ -876,7 +890,10 @@ mod tests {
 
         let (channel_id, guild_id) = result.unwrap();
         assert_eq!(channel_id, 987654321);
-        assert!(guild_id.is_none(), "Guild ID should be None for raw channel ID");
+        assert!(
+            guild_id.is_none(),
+            "Guild ID should be None for raw channel ID"
+        );
     }
 
     #[test]

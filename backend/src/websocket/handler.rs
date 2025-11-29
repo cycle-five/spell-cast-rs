@@ -15,7 +15,9 @@ use crate::{
     auth::AuthenticatedUser,
     db,
     game::grid::GridGenerator,
-    websocket::messages::{ClientMessage, GamePlayerInfo, LobbyPlayerInfo, LobbyType, ServerMessage},
+    websocket::messages::{
+        ClientMessage, GamePlayerInfo, LobbyPlayerInfo, LobbyType, ServerMessage,
+    },
     AppState, Lobby, LobbyPlayer, PlayerConnectionState,
 };
 
@@ -423,10 +425,13 @@ async fn handle_start_game(
     user: &AuthenticatedUser,
 ) -> Result<ServerMessage, ServerMessage> {
     // Get lobby and validate
-    let lobby = state.lobbies.get(lobby_id).ok_or_else(|| ServerMessage::GameError {
-        code: "lobby_not_found".to_string(),
-        message: "Lobby not found".to_string(),
-    })?;
+    let lobby = state
+        .lobbies
+        .get(lobby_id)
+        .ok_or_else(|| ServerMessage::GameError {
+            code: "lobby_not_found".to_string(),
+            message: "Lobby not found".to_string(),
+        })?;
 
     // 1. Validate sender is lobby host
     if !lobby.is_host(user.user_id) {
@@ -436,17 +441,22 @@ async fn handle_start_game(
         });
     }
 
-    // 2. Check for duplicate game (game already in progress)
-    if lobby.has_active_game() {
+    // 2. Atomically try to start game (prevents race condition)
+    // This checks both has_active_game and sets game_starting flag atomically
+    if !lobby.try_start_game() {
         return Err(ServerMessage::GameError {
             code: "game_in_progress".to_string(),
-            message: "A game is already in progress in this lobby".to_string(),
+            message: "A game is already in progress or starting in this lobby".to_string(),
         });
     }
+
+    // From this point on, we have the game_starting flag set.
+    // We must clear it on any error path or set active_game_id on success.
 
     // 3. Validate player count (2-6 players)
     let connected_count = lobby.connected_player_count();
     if connected_count < 2 {
+        lobby.clear_game_starting();
         return Err(ServerMessage::GameError {
             code: "not_enough_players".to_string(),
             message: format!(
@@ -456,12 +466,10 @@ async fn handle_start_game(
         });
     }
     if connected_count > 6 {
+        lobby.clear_game_starting();
         return Err(ServerMessage::GameError {
             code: "too_many_players".to_string(),
-            message: format!(
-                "Maximum 6 players allowed (currently {})",
-                connected_count
-            ),
+            message: format!("Maximum 6 players allowed (currently {})", connected_count),
         });
     }
 
@@ -483,6 +491,14 @@ async fn handle_start_game(
 
     // Drop the lobby ref before any operations that might await
     drop(lobby);
+
+    // Helper to clear game_starting flag and return an error
+    let clear_and_err = |state: &AppState, lobby_id: &str, err: ServerMessage| {
+        if let Some(lobby) = state.lobbies.get(lobby_id) {
+            lobby.clear_game_starting();
+        }
+        err
+    };
 
     // Shuffle player order (using thread_rng in a non-async block)
     {
@@ -509,58 +525,69 @@ async fn handle_start_game(
         .iter()
         .map(|p| {
             (
-                p.user_id
-                    .parse::<i64>()
-                    .expect("Failed to parse user_id from GamePlayerInfo; this should never happen"),
+                p.user_id.parse::<i64>().expect(
+                    "Failed to parse user_id from GamePlayerInfo; this should never happen",
+                ),
                 p.turn_order,
             )
         })
         .collect();
 
     // Create game session in database
-    let game_id = db::queries::create_game_session(
-        &state.db,
-        lobby_id,
-        user.user_id,
-        total_rounds,
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to create game session: {}", e);
-        ServerMessage::GameError {
-            code: "database_error".to_string(),
-            message: "Failed to create game session".to_string(),
-        }
-    })?;
+    let game_id = db::queries::create_game_session(&state.db, lobby_id, user.user_id, total_rounds)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to create game session: {}", e);
+            clear_and_err(
+                state,
+                lobby_id,
+                ServerMessage::GameError {
+                    code: "database_error".to_string(),
+                    message: "Failed to create game session".to_string(),
+                },
+            )
+        })?;
 
     // Add players to game
     db::queries::add_game_players_batch(&state.db, game_id, &player_tuples)
         .await
         .map_err(|e| {
             tracing::error!("Failed to add players to game: {}", e);
-            ServerMessage::GameError {
-                code: "database_error".to_string(),
-                message: "Failed to add players to game".to_string(),
-            }
+            clear_and_err(
+                state,
+                lobby_id,
+                ServerMessage::GameError {
+                    code: "database_error".to_string(),
+                    message: "Failed to add players to game".to_string(),
+                },
+            )
         })?;
 
     // Save the grid to database
     let grid_json = serde_json::to_value(&grid).map_err(|e| {
         tracing::error!("Failed to serialize grid: {}", e);
-        ServerMessage::GameError {
-            code: "serialization_error".to_string(),
-            message: "Failed to serialize game grid".to_string(),
-        }
+        clear_and_err(
+            state,
+            lobby_id,
+            ServerMessage::GameError {
+                code: "serialization_error".to_string(),
+                message: "Failed to serialize game grid".to_string(),
+            },
+        )
     })?;
 
     db::queries::create_or_update_game_board(&state.db, game_id, grid_json)
         .await
         .map_err(|e| {
             tracing::error!("Failed to create game board: {}", e);
-            ServerMessage::GameError {
-                code: "database_error".to_string(),
-                message: "Failed to create game board".to_string(),
-            }
+            clear_and_err(
+                state,
+                lobby_id,
+                ServerMessage::GameError {
+                    code: "database_error".to_string(),
+                    message: "Failed to create game board".to_string(),
+                },
+            )
         })?;
 
     // Update game state to active
@@ -568,15 +595,20 @@ async fn handle_start_game(
         .await
         .map_err(|e| {
             tracing::error!("Failed to update game state: {}", e);
-            ServerMessage::GameError {
-                code: "database_error".to_string(),
-                message: "Failed to update game state".to_string(),
-            }
+            clear_and_err(
+                state,
+                lobby_id,
+                ServerMessage::GameError {
+                    code: "database_error".to_string(),
+                    message: "Failed to update game state".to_string(),
+                },
+            )
         })?;
 
-    // 7. Link game to lobby
+    // 7. Link game to lobby and clear game_starting flag
     if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
         lobby.active_game_id = Some(game_id);
+        lobby.clear_game_starting();
     }
 
     tracing::info!(
