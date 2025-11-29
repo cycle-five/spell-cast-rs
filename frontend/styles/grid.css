@@ -2,15 +2,14 @@
 
 .game-board {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  grid-template-rows: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(60px, 1fr));
+  grid-template-rows: repeat(5, minmax(60px, 1fr));
   gap: 8px;
   padding: 16px;
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: 0 8px 24px var(--shadow);
-  max-width: 500px;
-  max-height: 500px;
+  max-width: 550px;
   aspect-ratio: 1;
   position: relative;
 }
@@ -221,14 +220,11 @@
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .game-board {
-    max-width: 90vw;
-    max-height: 90vw;
+    max-width: 95vw;
+    grid-template-columns: repeat(5, minmax(50px, 1fr));
+    grid-template-rows: repeat(5, minmax(50px, 1fr));
     gap: 6px;
     padding: 12px;
-  }
-
-  .tile {
-    /* min-height removed */
   }
 
   .tile .letter {
@@ -237,5 +233,14 @@
 
   .tile .value {
     font-size: 0.6rem;
+  }
+
+  .tile .multiplier {
+    font-size: 0.55rem;
+    padding: 1px 3px;
+  }
+
+  .tile .gem {
+    font-size: 0.75rem;
   }
 }

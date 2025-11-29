@@ -737,6 +737,25 @@ async fn handle_start_game(
             )
         })?;
 
+    // Set the actual first player (after shuffle) as current turn
+    // Note: create_game_session initially sets it to the host, but shuffle may have changed that
+    let first_player_id: i64 = current_player_id.parse().unwrap_or(0);
+    if first_player_id != 0 {
+        db::queries::update_game_round(&state.db, game_id, 1, first_player_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to set first player: {}", e);
+                clear_and_err(
+                    state,
+                    lobby_id,
+                    ServerMessage::GameError {
+                        code: "database_error".to_string(),
+                        message: "Failed to set first player".to_string(),
+                    },
+                )
+            })?;
+    }
+
     // 7. Link game to lobby and clear game_starting flag
     if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
         lobby.active_game_id = Some(game_id);
