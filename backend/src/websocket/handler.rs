@@ -499,33 +499,29 @@ async fn send_active_game_state_if_exists(
 ) -> anyhow::Result<()> {
     match db::queries::get_active_game_for_lobby(&state.db, lobby_id).await {
         Ok(Some(game_state)) => {
-            // Get player user_ids from game_players table for proper mapping
-            let players = db::queries::get_game_players(&state.db, game_state.game_id)
+            // Get player records from game_players table
+            let player_records = db::queries::get_game_players(&state.db, game_state.game_id)
                 .await
                 .unwrap_or_default();
 
-            // Map game players with real user_ids
-            let player_infos: Vec<crate::websocket::messages::PlayerInfo> = game_state
-                .players
-                .iter()
-                .enumerate()
-                .map(|(idx, p)| {
-                    let user_id = players
-                        .get(idx)
-                        .map(|pr| pr.user_id.to_string())
-                        .unwrap_or_else(|| "0".to_string());
-                    crate::websocket::messages::PlayerInfo {
-                        user_id,
-                        username: p.username.clone(),
-                        avatar_url: p.avatar_url.clone(),
-                        score: p.score,
+            // Build player info list from DB records
+            let mut player_infos: Vec<crate::websocket::messages::PlayerInfo> = Vec::new();
+            for pr in &player_records {
+                if let Ok(Some(user)) =
+                    db::queries::get_user(&state.db, pr.user_id, &state.config.security.encryption_key).await
+                {
+                    player_infos.push(crate::websocket::messages::PlayerInfo {
+                        user_id: pr.user_id.to_string(),
+                        username: user.username,
+                        avatar_url: user.avatar_url,
+                        score: pr.score,
                         team: None,
-                    }
-                })
-                .collect();
+                    });
+                }
+            }
 
             // Get current turn player's user_id
-            let current_turn = players
+            let current_turn = player_records
                 .get(game_state.current_player_index)
                 .map(|pr| pr.user_id.to_string());
 
@@ -1004,7 +1000,7 @@ async fn handle_client_message(
 
             // Get active game from lobby
             let active_game_id = if let Some(lobby) = state.lobbies.get(&lobby_id) {
-                lobby.active_game_id.clone()
+                lobby.active_game_id
             } else {
                 tx.send(ServerMessage::Error {
                     message: "Lobby not found".to_string(),
@@ -1319,6 +1315,7 @@ async fn handle_client_message(
             let num_players = player_records.len();
             let current_idx = game_state.current_player_index;
             let next_idx = (current_idx + 1) % num_players;
+
 
             // Check if we've completed a round (wrapped back to first player)
             let round_complete =

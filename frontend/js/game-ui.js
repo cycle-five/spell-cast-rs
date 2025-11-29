@@ -6,6 +6,7 @@ export class GameUI {
     this.currentGrid = null;
     this.gameId = null;
     this.currentPlayerId = null;
+    this.isMyTurn = false; // Track turn state for client-side validation
     this.setupListeners();
   }
 
@@ -53,6 +54,7 @@ export class GameUI {
     this.gameClient.on('error', (data) => {
       console.error('Server error:', data);
       this.showError(data.message || 'An error occurred');
+      this.setSubmitLoading(false);
     });
 
     this.gameClient.on('game_error', (data) => {
@@ -149,14 +151,21 @@ export class GameUI {
 
   updateTurnIndicator(currentPlayerId) {
     const indicator = document.getElementById('turn-indicator');
+
     if (indicator) {
       // Check if it's my turn
       // Note: userId might be string or number depending on source, so use loose equality or string conversion
       const isMyTurn = String(currentPlayerId) === String(this.userId);
+      this.isMyTurn = isMyTurn; // Store for client-side validation
       indicator.textContent = isMyTurn ? 'Your Turn!' : "Opponent's Turn";
+      indicator.classList.toggle('my-turn', isMyTurn);
 
-      // Toggle controls based on turn
+      // Toggle controls based on turn - use both CSS and disabled attribute
       const controls = document.querySelector('.game-controls');
+      const submitBtn = document.getElementById('submit-btn');
+      const clearBtn = document.getElementById('clear-btn');
+      const passBtn = document.getElementById('pass-btn');
+
       if (controls) {
         if (isMyTurn) {
           controls.classList.remove('disabled');
@@ -168,6 +177,13 @@ export class GameUI {
           controls.style.pointerEvents = 'none';
         }
       }
+
+      // Set actual disabled attribute on buttons for accessibility and to prevent keyboard activation
+      [submitBtn, clearBtn, passBtn].forEach(btn => {
+        if (btn) {
+          btn.disabled = !isMyTurn;
+        }
+      });
     }
   }
 
@@ -400,6 +416,12 @@ export class GameUI {
       return;
     }
 
+    // Client-side turn validation to prevent unnecessary server round-trips
+    if (!this.isMyTurn) {
+      this.showError("It's not your turn");
+      return;
+    }
+
     // Validate minimum word length (3 characters required)
     if (this.selectedTiles.length < 3) {
       this.showError('Word must be at least 3 letters');
@@ -425,7 +447,8 @@ export class GameUI {
         submitBtn.textContent = 'Submitting...';
         submitBtn.classList.add('loading');
       } else {
-        submitBtn.disabled = false;
+        // Restore button state, respecting current turn
+        submitBtn.disabled = !this.isMyTurn;
         submitBtn.textContent = submitBtn.dataset.originalText || 'Submit';
         submitBtn.classList.remove('loading');
       }

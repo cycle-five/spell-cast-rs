@@ -5,8 +5,8 @@ use uuid::Uuid;
 use crate::{
     encryption,
     models::{
-        Game, GameBoard, GameDbState, GameMode, GameMove, GamePlayer, GamePlayerRecord, GameState,
-        GameStatus, GridCell, User, UserGuildProfile,
+        Game, GameBoard, GameDbState, GameMode, GameMove, GamePlayerRecord, GameState, GameStatus,
+        GridCell, User, UserGuildProfile,
     },
 };
 
@@ -455,33 +455,13 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
         .fetch_optional(pool)
         .await?;
 
-    // Get all players for this game ordered by turn_order
+    // Get player records to determine current_player_index
     let player_records = sqlx::query_as::<_, GamePlayerRecord>(
         "SELECT * FROM game_players WHERE game_id = $1 ORDER BY turn_order",
     )
     .bind(game.game_id)
     .fetch_all(pool)
     .await?;
-
-    // Get user info for each player
-    let mut players = Vec::with_capacity(player_records.len());
-    for record in player_records.iter() {
-        let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
-            .bind(record.user_id)
-            .fetch_optional(pool)
-            .await?;
-
-        if let Some(u) = user {
-            players.push(GamePlayer {
-                user_id: record.user_id,
-                username: u.username,
-                avatar_url: u.avatar_url,
-                score: record.score,
-                turn_order: record.turn_order as u8,
-                is_connected: true, // Assume connected; WebSocket handler will update
-            });
-        }
-    }
 
     // Parse the grid from JSON
     let grid: Vec<Vec<GridCell>> = if let Some(ref b) = board {
@@ -519,9 +499,6 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
         GameDbState::Cancelled => GameStatus::Finished,
     };
 
-    // Build round submissions map (all false initially, WebSocket will update)
-    let round_submissions = players.iter().map(|p| (p.user_id, false)).collect();
-
     // Determine current player index
     let current_player_index = if let Some(turn_player) = game.current_turn_player {
         player_records
@@ -535,12 +512,10 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
     Ok(Some(GameState {
         game_id: game.game_id,
         grid,
-        players,
         current_round: game.current_round as u8,
         total_rounds: game.max_rounds as u8,
         current_player_index,
         used_words,
-        round_submissions,
         status,
         created_at: game.created_at,
     }))
@@ -585,14 +560,14 @@ pub async fn update_game_round(
     Ok(())
 }
 
-/// Update a player's score in the database
+/// Add to a player's score in the database
 pub async fn update_player_score(
     pool: &PgPool,
     game_id: Uuid,
     user_id: i64,
     score: i32,
 ) -> Result<()> {
-    sqlx::query("UPDATE game_players SET score = $1 WHERE game_id = $2 AND user_id = $3")
+    sqlx::query("UPDATE game_players SET score = score + $1 WHERE game_id = $2 AND user_id = $3")
         .bind(score)
         .bind(game_id)
         .bind(user_id)

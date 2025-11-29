@@ -9,9 +9,8 @@ pub use game::{
     GameDbState,
     GameMode,
     GameMove,
-    // Live game state (for WebSocket/in-memory)
-    GamePlayer,
     GamePlayerRecord,
+    // Game state DTO (for fetching from DB)
     GameState,
     GameStatus,
     // Grid types
