@@ -1116,7 +1116,7 @@ async fn handle_client_message(
             let next_player = &game_state.players[next_idx];
 
             // Update DB
-            let game_uuid = uuid::Uuid::parse_str(&game_state.game_id).unwrap_or_default();
+            let game_uuid = game_state.game_id;
             // Note: We need the user_id (i64) for the DB update, but GamePlayer struct has user_id as Uuid (in-memory) or i64?
             // Let's check GamePlayer definition. In db/queries.rs it says:
             // user_id: Uuid::new_v4(), // Generate a UUID for in-memory tracking
