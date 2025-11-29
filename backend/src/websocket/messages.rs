@@ -58,6 +58,8 @@ pub enum ClientMessage {
     AdminDeleteGame {
         game_id: String,
     },
+    /// Heartbeat to keep connection alive through proxies
+    Heartbeat,
 }
 
 /// Messages sent from server to client
@@ -91,7 +93,8 @@ pub enum ServerMessage {
         max_rounds: i32,
         grid: Vec<Vec<GridCell>>,
         players: Vec<PlayerInfo>,
-        current_turn: Option<i64>,
+        /// Current turn player ID as string to preserve precision in JavaScript
+        current_turn: Option<String>,
         used_words: Vec<String>,
         timer_enabled: bool,
         time_remaining: Option<u32>,
@@ -100,7 +103,7 @@ pub enum ServerMessage {
         player: PlayerInfo,
     },
     PlayerLeft {
-        user_id: i64,
+        user_id: String,
     },
     /// Sent to all players when a game starts
     GameStarted {
@@ -123,7 +126,7 @@ pub enum ServerMessage {
         message: String,
     },
     TurnUpdate {
-        current_player: i64,
+        current_player: String,
         time_remaining: Option<u32>,
     },
     WordScored {
@@ -147,7 +150,7 @@ pub enum ServerMessage {
         replaced_positions: Vec<Position>,
     },
     GameOver {
-        winner: Option<i64>,
+        winner: Option<String>,
         final_scores: Vec<ScoreInfo>,
     },
     Error {
@@ -160,6 +163,8 @@ pub enum ServerMessage {
     AdminGameDeleted {
         game_id: String,
     },
+    /// Heartbeat acknowledgment to confirm connection is alive
+    HeartbeatAck,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,7 +177,8 @@ pub struct AdminGameInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerInfo {
-    pub user_id: i64,
+    /// User ID as string to preserve precision in JavaScript (Discord IDs exceed Number.MAX_SAFE_INTEGER)
+    pub user_id: String,
     pub username: String,
     pub avatar_url: Option<String>,
     pub score: i32,
@@ -189,7 +195,8 @@ pub struct LobbyPlayerInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoreInfo {
-    pub user_id: i64,
+    /// User ID as string to preserve precision in JavaScript
+    pub user_id: String,
     pub username: String,
     pub score: i32,
 }

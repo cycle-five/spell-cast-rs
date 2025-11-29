@@ -68,6 +68,8 @@ pub struct GamePlayerRecord {
     pub is_bot: bool,
     pub bot_difficulty: Option<String>,
     pub joined_at: DateTime<Utc>,
+    /// Turn order for this player (0-indexed, determines play sequence)
+    pub turn_order: i32,
 }
 
 // =============================================================================

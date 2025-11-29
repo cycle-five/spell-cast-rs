@@ -431,6 +431,7 @@ async fn broadcast_game_state(
     current_player_id: i64,
     used_words: &[String],
 ) {
+    tracing::info!("Preparing to broadcast game state for game {} in lobby {}", game_uuid, lobby_id);    
     // Get player records for scores and info
     let player_records = db::queries::get_game_players(&state.db, game_uuid)
         .await
@@ -457,7 +458,7 @@ async fn broadcast_game_state(
                 .cloned()
                 .unwrap_or_else(|| (format!("Player {}", pr.user_id), None));
             crate::websocket::messages::PlayerInfo {
-                user_id: pr.user_id,
+                user_id: pr.user_id.to_string(),
                 username,
                 avatar_url,
                 score: pr.score,
@@ -473,12 +474,19 @@ async fn broadcast_game_state(
         max_rounds: total_rounds as i32,
         grid: grid.clone(),
         players: player_infos,
-        current_turn: Some(current_player_id),
+        current_turn: Some(current_player_id.to_string()),
         used_words: used_words.to_vec(),
         timer_enabled: false,
         time_remaining: None,
     };
 
+    tracing::info!(
+        "Broadcasting game state for game {} in lobby {}: round {}/{}",
+        game_uuid,
+        lobby_id,
+        current_round,
+        total_rounds
+    );
     broadcast_to_lobby(state, lobby_id, game_state_msg).await;
 }
 
@@ -504,8 +512,8 @@ async fn send_active_game_state_if_exists(
                 .map(|(idx, p)| {
                     let user_id = players
                         .get(idx)
-                        .map(|pr| pr.user_id)
-                        .unwrap_or(0);
+                        .map(|pr| pr.user_id.to_string())
+                        .unwrap_or_else(|| "0".to_string());
                     crate::websocket::messages::PlayerInfo {
                         user_id,
                         username: p.username.clone(),
@@ -519,7 +527,7 @@ async fn send_active_game_state_if_exists(
             // Get current turn player's user_id
             let current_turn = players
                 .get(game_state.current_player_index)
-                .map(|pr| pr.user_id);
+                .map(|pr| pr.user_id.to_string());
 
             tx.send(ServerMessage::GameState {
                 game_id: game_state.game_id.to_string(),
@@ -1187,7 +1195,7 @@ async fn handle_client_message(
                             .cloned()
                             .unwrap_or_else(|| (format!("Player {}", p.user_id), None));
                         crate::websocket::messages::ScoreInfo {
-                            user_id: p.user_id,
+                            user_id: p.user_id.to_string(),
                             username,
                             score: p.score,
                         }
@@ -1198,7 +1206,7 @@ async fn handle_client_message(
                     state,
                     &lobby_id,
                     ServerMessage::GameOver {
-                        winner: winner_id,
+                        winner: winner_id.map(|id| id.to_string()),
                         final_scores,
                     },
                 )
@@ -1363,7 +1371,7 @@ async fn handle_client_message(
                             .cloned()
                             .unwrap_or_else(|| (format!("Player {}", p.user_id), None));
                         crate::websocket::messages::ScoreInfo {
-                            user_id: p.user_id,
+                            user_id: p.user_id.to_string(),
                             username,
                             score: p.score,
                         }
@@ -1374,7 +1382,7 @@ async fn handle_client_message(
                     state,
                     &lobby_id,
                     ServerMessage::GameOver {
-                        winner: winner_id,
+                        winner: winner_id.map(|id| id.to_string()),
                         final_scores,
                     },
                 )
@@ -1598,6 +1606,11 @@ async fn handle_client_message(
                     .await?;
                 }
             }
+        }
+
+        ClientMessage::Heartbeat => {
+            // Respond immediately with HeartbeatAck to keep the connection alive
+            tx.send(ServerMessage::HeartbeatAck).await?;
         }
     }
 

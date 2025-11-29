@@ -5,6 +5,10 @@ export class GameClient {
     this.listeners = new Map();
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
+    // Heartbeat properties for keeping connection alive through proxies
+    this.heartbeatInterval = null;
+    this.heartbeatTimeout = null;
+    this.lastPongTime = Date.now();
     this.connect();
   }
 
@@ -17,6 +21,7 @@ export class GameClient {
       this.ws.onopen = () => {
         console.log('WebSocket connected');
         this.reconnectAttempts = 0;
+        this.startHeartbeat();
         this.emit('connected');
       };
 
@@ -37,6 +42,7 @@ export class GameClient {
 
       this.ws.onclose = () => {
         console.log('WebSocket closed');
+        this.stopHeartbeat();
         this.emit('disconnected');
         this.attemptReconnect();
       };
@@ -72,7 +78,44 @@ export class GameClient {
 
   handleMessage(message) {
     const { type } = message;
+    // Handle heartbeat acknowledgment specially
+    if (type === 'heartbeat_ack') {
+      this.handleHeartbeatAck();
+      return;
+    }
     this.emit(type, message);
+  }
+
+  // Heartbeat methods to keep connection alive through proxies
+  startHeartbeat() {
+    this.stopHeartbeat(); // Clear any existing timers
+    this.lastPongTime = Date.now();
+
+    this.heartbeatInterval = setInterval(() => {
+      this.send({ type: 'heartbeat' });
+      // Set timeout to detect if server doesn't respond
+      this.heartbeatTimeout = setTimeout(() => {
+        console.warn('Heartbeat timeout - connection may be dead');
+        this.ws.close(); // Will trigger reconnection
+      }, 10000); // 10 second timeout for ack
+    }, 20000); // Send heartbeat every 20 seconds
+  }
+
+  handleHeartbeatAck() {
+    clearTimeout(this.heartbeatTimeout);
+    this.heartbeatTimeout = null;
+    this.lastPongTime = Date.now();
+  }
+
+  stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    if (this.heartbeatTimeout) {
+      clearTimeout(this.heartbeatTimeout);
+      this.heartbeatTimeout = null;
+    }
   }
 
   on(event, callback) {

@@ -202,7 +202,7 @@ pub async fn add_player_to_game(
 
 pub async fn get_game_players(pool: &PgPool, game_id: Uuid) -> Result<Vec<GamePlayerRecord>> {
     sqlx::query_as::<_, GamePlayerRecord>(
-        "SELECT * FROM game_players WHERE game_id = $1 ORDER BY joined_at",
+        "SELECT * FROM game_players WHERE game_id = $1 ORDER BY turn_order",
     )
     .bind(game_id)
     .fetch_all(pool)
@@ -369,15 +369,15 @@ pub async fn add_game_players_batch(
     for (user_id, turn_order) in players {
         sqlx::query(
             r#"
-            INSERT INTO game_players (game_id, user_id, team, score, is_bot)
+            INSERT INTO game_players (game_id, user_id, turn_order, score, is_bot)
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (game_id, user_id) DO UPDATE SET
-                team = EXCLUDED.team
+                turn_order = EXCLUDED.turn_order
             "#,
         )
         .bind(game_id)
         .bind(*user_id)
-        .bind(*turn_order as i32) // TODO: Add dedicated turn_order column instead of reusing team
+        .bind(*turn_order as i32)
         .bind(0_i32) // Initial score
         .bind(false) // Not a bot
         .execute(&mut *tx)
