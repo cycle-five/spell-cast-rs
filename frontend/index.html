@@ -63,6 +63,21 @@
         </div>
 
         <button id="start-game-btn" class="primary-button hidden">Start Game</button>
+
+        <!-- Admin Panel Toggle -->
+        <div style="margin-top: 20px; text-align: center;">
+          <button id="toggle-admin-btn"
+            style="background: none; border: none; color: #666; cursor: pointer; font-size: 0.8rem;">Debug/Admin</button>
+        </div>
+
+        <!-- Admin Panel -->
+        <div id="admin-panel" class="hidden"
+          style="margin-top: 10px; background: #333; padding: 10px; border-radius: 8px;">
+          <h3>Admin Panel</h3>
+          <button id="refresh-games-btn" class="secondary-button" style="padding: 5px 10px; font-size: 0.8rem;">Refresh
+            Games</button>
+          <div id="admin-games-list" style="margin-top: 10px; max-height: 200px; overflow-y: auto;"></div>
+        </div>
       </div>
     </div>
 

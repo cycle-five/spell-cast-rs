@@ -109,6 +109,16 @@ class App {
       this.showScreen('lobby');
     });
 
+    // Admin controls
+    document.getElementById('toggle-admin-btn')?.addEventListener('click', () => {
+      const panel = document.getElementById('admin-panel');
+      panel.classList.toggle('hidden');
+    });
+
+    document.getElementById('refresh-games-btn')?.addEventListener('click', () => {
+      this.gameClient.getAdminGames();
+    });
+
     // Join lobby when WebSocket connects
     this.gameClient.on('connected', () => {
       console.log('WebSocket connected');
@@ -163,6 +173,11 @@ class App {
     this.gameClient.on('game_error', (data) => {
       console.error('Game error:', data.message);
       this.showError(data.message);
+    });
+
+    // Admin games list
+    this.gameClient.on('admin_games_list', (data) => {
+      this.renderAdminGamesList(data.games);
     });
 
     // Listen for game state changes
@@ -270,6 +285,40 @@ class App {
         startBtn.classList.add('hidden');
       }
     }
+  }
+
+  renderAdminGamesList(games) {
+    const list = document.getElementById('admin-games-list');
+    if (!list) return;
+
+    list.innerHTML = '';
+    if (games.length === 0) {
+      list.innerHTML = '<p style="color: #aaa; font-size: 0.9rem;">No games found.</p>';
+      return;
+    }
+
+    games.forEach(game => {
+      const item = document.createElement('div');
+      item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 5px; border-bottom: 1px solid #444; font-size: 0.9rem;';
+
+      const info = document.createElement('span');
+      info.textContent = `${new Date(game.created_at).toLocaleTimeString()} - ${game.state}`;
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.style.cssText = 'background: #ED4245; color: white; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;';
+      deleteBtn.onclick = () => {
+        if (confirm('Delete this game?')) {
+          this.gameClient.deleteGame(game.game_id);
+          // Refresh list after a short delay
+          setTimeout(() => this.gameClient.getAdminGames(), 500);
+        }
+      };
+
+      item.appendChild(info);
+      item.appendChild(deleteBtn);
+      list.appendChild(item);
+    });
   }
 }
 

@@ -1085,6 +1085,113 @@ async fn handle_client_message(
             tracing::info!("User {} ({}) enabling timer", user.username, user.user_id);
             // TODO: Implement timer enable logic
         }
+
+        ClientMessage::AdminGetGames => {
+            tracing::info!(
+                "User {} ({}) requesting admin games list",
+                user.username,
+                user.user_id
+            );
+
+            // Get lobby ID
+            let context = player_context.lock().await;
+            let lobby_id = match &context.lobby_id {
+                Some(id) => id.clone(),
+                None => {
+                    tx.send(ServerMessage::Error {
+                        message: "Not in a lobby".to_string(),
+                    })
+                    .await?;
+                    return Ok(());
+                }
+            };
+            drop(context);
+
+            // Parse channel ID from lobby ID
+            let (channel_id, _) = match db::queries::parse_lobby_id(&lobby_id) {
+                Ok(ids) => ids,
+                Err(_) => {
+                    tx.send(ServerMessage::Error {
+                        message: "Invalid lobby ID".to_string(),
+                    })
+                    .await?;
+                    return Ok(());
+                }
+            };
+
+            // Fetch games for this channel
+            let games = sqlx::query_as::<_, crate::models::Game>(
+                "SELECT * FROM games WHERE channel_id = $1 ORDER BY created_at DESC",
+            )
+            .bind(channel_id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch games: {}", e);
+                ServerMessage::Error {
+                    message: "Database error".to_string(),
+                }
+            })?;
+
+            let admin_games = games
+                .into_iter()
+                .map(|g| {
+                    crate::websocket::messages::AdminGameInfo {
+                        game_id: g.game_id.to_string(),
+                        state: g.state.to_string(),
+                        created_at: g.created_at,
+                        players: vec![], // TODO: Fetch players if needed, keeping it simple for now
+                    }
+                })
+                .collect();
+
+            tx.send(ServerMessage::AdminGamesList { games: admin_games })
+                .await?;
+        }
+
+        ClientMessage::AdminDeleteGame { game_id } => {
+            tracing::info!(
+                "User {} ({}) deleting game {}",
+                user.username,
+                user.user_id,
+                game_id
+            );
+
+            let game_uuid = match uuid::Uuid::parse_str(&game_id) {
+                Ok(id) => id,
+                Err(_) => {
+                    tx.send(ServerMessage::Error {
+                        message: "Invalid game ID".to_string(),
+                    })
+                    .await?;
+                    return Ok(());
+                }
+            };
+
+            // Delete game (cascades to players, boards, moves)
+            match sqlx::query("DELETE FROM games WHERE game_id = $1")
+                .bind(game_uuid)
+                .execute(&state.db)
+                .await
+            {
+                Ok(_) => {
+                    // Refresh list
+                    // We could just send success, but refreshing the list is nicer
+                    // Re-using the get logic would be best, but for now just send success
+                    tx.send(ServerMessage::Error {
+                        message: "Game deleted".to_string(),
+                    })
+                    .await?; // Using Error as generic toast for now
+                }
+                Err(e) => {
+                    tracing::error!("Failed to delete game: {}", e);
+                    tx.send(ServerMessage::Error {
+                        message: "Failed to delete game".to_string(),
+                    })
+                    .await?;
+                }
+            }
+        }
     }
 
     Ok(())
