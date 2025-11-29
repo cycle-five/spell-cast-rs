@@ -98,6 +98,12 @@ class App {
       this.gameClient.passTurn();
     });
 
+    // Start game button (host only)
+    document.getElementById('start-game-btn')?.addEventListener('click', () => {
+      console.log('Starting game...');
+      this.gameClient.startGame();
+    });
+
     // Play again
     document.getElementById('play-again-btn')?.addEventListener('click', () => {
       this.showScreen('lobby');
@@ -155,9 +161,10 @@ class App {
     });
 
     // Listen for game state changes
-    this.gameClient.on('game_started', () => {
-      this.showScreen('game');
-    });
+    // game_started is handled by GameUI, which transitions the screen
+    // this.gameClient.on('game_started', () => {
+    //   this.showScreen('game');
+    // });
 
     this.gameClient.on('game_over', () => {
       this.showScreen('results');
@@ -244,6 +251,20 @@ class App {
       playerCard.appendChild(span);
       container.appendChild(playerCard);
     });
+
+    // Show/hide start game button based on player count and host status
+    // Note: We don't have explicit "is_host" flag in player list yet, 
+    // but usually the first player or the one who created the lobby is host.
+    // For now, let's show it if we have enough players (>= 2).
+    // TODO: Add proper host check when backend provides it in player list or separate message
+    const startBtn = document.getElementById('start-game-btn');
+    if (startBtn) {
+      if (players.length >= 2) {
+        startBtn.classList.remove('hidden');
+      } else {
+        startBtn.classList.add('hidden');
+      }
+    }
   }
 }
 
