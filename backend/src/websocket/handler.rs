@@ -201,7 +201,7 @@ async fn add_player_to_lobby(
             let lobby_type = lobby.lobby_type.clone();
             let lobby_code = lobby.lobby_code.clone();
             let is_host = lobby.is_host(user.user_id);
-            let active_game_id = lobby.active_game_id.clone();
+            let active_game_id = lobby.active_game_id.map(|id| id.to_string()).clone();
 
             Some((lobby_type, lobby_code, is_host, active_game_id))
         } else {
@@ -235,7 +235,7 @@ async fn add_player_to_lobby(
 
             let lobby_type = lobby.lobby_type.clone();
             let lobby_code = lobby.lobby_code.clone();
-            let active_game_id = lobby.active_game_id.clone();
+            let active_game_id = lobby.active_game_id.map(|id| id.to_string()).clone();
 
             tracing::info!(
                 "Player {} ({}) joined lobby {} (type: {:?})",
