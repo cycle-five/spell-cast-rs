@@ -52,7 +52,6 @@ pub enum ClientMessage {
         positions: Vec<Position>,
     },
     PassTurn,
-    PassTurn,
     EnableTimer,
     // Admin commands
     AdminGetGames,

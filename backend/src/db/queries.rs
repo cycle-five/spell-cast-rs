@@ -299,7 +299,7 @@ pub async fn create_game_session(
 ///
 /// # Errors
 /// Returns `sqlx::Error::Protocol` if the lobby_id format is invalid or cannot be parsed
-fn parse_lobby_id(lobby_id: &str) -> Result<(i64, Option<i64>)> {
+pub fn parse_lobby_id(lobby_id: &str) -> Result<(i64, Option<i64>)> {
     if let Some(channel_str) = lobby_id.strip_prefix("channel:") {
         // Channel-based lobby: "channel:123456789"
         let channel = channel_str.parse::<i64>().map_err(|e| {

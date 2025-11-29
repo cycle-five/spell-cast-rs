@@ -1014,7 +1014,7 @@ async fn handle_client_message(
             let score = Scorer::calculate_score(&game_state.grid, &positions);
 
             // Update DB
-            let game_uuid = uuid::Uuid::parse_str(&game_state.game_id).unwrap_or_default();
+            let game_uuid = game_state.game_id;
 
             // 1. Update player score
             if let Err(e) =
@@ -1274,7 +1274,7 @@ async fn handle_client_message(
                     if let Some(lobby_id) = &context.lobby_id {
                         if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
                             if let Some(active_id) = &lobby.active_game_id {
-                                if active_id == &game_id {
+                                if active_id == &game_uuid {
                                     lobby.active_game_id = None;
                                     tracing::info!(
                                         "Cleared active game {} from lobby {}",
