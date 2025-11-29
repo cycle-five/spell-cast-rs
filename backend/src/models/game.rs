@@ -99,8 +99,8 @@ impl Default for GameStatus {
 /// Player information for live game state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GamePlayer {
-    /// Unique identifier for the player
-    pub user_id: Uuid,
+    /// Discord user ID (i64 to match Discord's snowflake IDs)
+    pub user_id: i64,
     /// Display name
     pub username: String,
     /// Discord avatar URL
@@ -115,7 +115,7 @@ pub struct GamePlayer {
 
 impl GamePlayer {
     pub fn new(
-        user_id: Uuid,
+        user_id: i64,
         username: String,
         avatar_url: Option<String>,
         turn_order: u8,
@@ -149,7 +149,7 @@ pub struct GameState {
     /// Words that have been used this game
     pub used_words: HashSet<String>,
     /// Tracks which players have submitted this round (player_id -> has_submitted)
-    pub round_submissions: HashMap<Uuid, bool>,
+    pub round_submissions: HashMap<i64, bool>,
     /// Current game status
     pub status: GameStatus,
     /// When the game was created
@@ -191,19 +191,19 @@ impl GameState {
     }
 
     /// Check if it's the specified player's turn
-    pub fn is_player_turn(&self, player_id: Uuid) -> bool {
+    pub fn is_player_turn(&self, player_id: i64) -> bool {
         self.current_player()
             .map(|p| p.user_id == player_id)
             .unwrap_or(false)
     }
 
     /// Get a player by their user ID
-    pub fn get_player(&self, user_id: Uuid) -> Option<&GamePlayer> {
+    pub fn get_player(&self, user_id: i64) -> Option<&GamePlayer> {
         self.players.iter().find(|p| p.user_id == user_id)
     }
 
     /// Get a mutable reference to a player by their user ID
-    pub fn get_player_mut(&mut self, user_id: Uuid) -> Option<&mut GamePlayer> {
+    pub fn get_player_mut(&mut self, user_id: i64) -> Option<&mut GamePlayer> {
         self.players.iter_mut().find(|p| p.user_id == user_id)
     }
 
@@ -228,7 +228,7 @@ impl GameState {
     }
 
     /// Mark a player as having submitted for this round
-    pub fn mark_player_submitted(&mut self, player_id: Uuid) {
+    pub fn mark_player_submitted(&mut self, player_id: i64) {
         self.round_submissions.insert(player_id, true);
     }
 
@@ -250,8 +250,6 @@ impl GameState {
     }
 }
 
-// Legacy type alias for backwards compatibility
-pub type GamePersistenceState = GameDbState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct GameBoard {
@@ -353,12 +351,12 @@ mod tests {
     fn create_test_players() -> Vec<GamePlayer> {
         vec![
             GamePlayer::new(
-                Uuid::new_v4(),
+                123456789012345678,
                 "Player1".to_string(),
                 Some("https://cdn.discord.com/avatar1.png".to_string()),
                 0,
             ),
-            GamePlayer::new(Uuid::new_v4(), "Player2".to_string(), None, 1),
+            GamePlayer::new(987654321098765432, "Player2".to_string(), None, 1),
         ]
     }
 
@@ -393,7 +391,7 @@ mod tests {
     #[test]
     fn test_game_player_serialization() {
         let player = GamePlayer::new(
-            Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(),
+            976966669169733672, // Discord snowflake ID
             "TestPlayer".to_string(),
             Some("https://example.com/avatar.png".to_string()),
             0,
@@ -401,7 +399,7 @@ mod tests {
 
         let json = serde_json::to_string(&player).unwrap();
         assert!(json.contains("TestPlayer"));
-        assert!(json.contains("550e8400-e29b-41d4-a716-446655440000"));
+        assert!(json.contains("976966669169733672"));
 
         let deserialized: GamePlayer = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.username, "TestPlayer");
@@ -412,7 +410,7 @@ mod tests {
 
     #[test]
     fn test_game_player_default_values() {
-        let player = GamePlayer::new(Uuid::new_v4(), "NewPlayer".to_string(), None, 2);
+        let player = GamePlayer::new(111222333444555666, "NewPlayer".to_string(), None, 2);
 
         assert_eq!(player.score, 0);
         assert!(player.is_connected);
@@ -508,7 +506,7 @@ mod tests {
         assert!(player.is_some());
         assert_eq!(player.unwrap().username, "Player1");
 
-        let non_existent = game_state.get_player(Uuid::new_v4());
+        let non_existent = game_state.get_player(999999999999999999);
         assert!(non_existent.is_none());
     }
 

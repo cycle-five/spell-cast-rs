@@ -455,9 +455,9 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
         .fetch_optional(pool)
         .await?;
 
-    // Get all players for this game
+    // Get all players for this game ordered by turn_order
     let player_records = sqlx::query_as::<_, GamePlayerRecord>(
-        "SELECT * FROM game_players WHERE game_id = $1 ORDER BY team, joined_at",
+        "SELECT * FROM game_players WHERE game_id = $1 ORDER BY turn_order",
     )
     .bind(game.game_id)
     .fetch_all(pool)
@@ -465,7 +465,7 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
 
     // Get user info for each player
     let mut players = Vec::with_capacity(player_records.len());
-    for (idx, record) in player_records.iter().enumerate() {
+    for record in player_records.iter() {
         let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
             .bind(record.user_id)
             .fetch_optional(pool)
@@ -473,11 +473,11 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
 
         if let Some(u) = user {
             players.push(GamePlayer {
-                user_id: Uuid::new_v4(), // Generate a UUID for in-memory tracking
+                user_id: record.user_id,
                 username: u.username,
                 avatar_url: u.avatar_url,
                 score: record.score,
-                turn_order: record.team.unwrap_or(idx as i32) as u8,
+                turn_order: record.turn_order as u8,
                 is_connected: true, // Assume connected; WebSocket handler will update
             });
         }

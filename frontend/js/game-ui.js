@@ -77,6 +77,9 @@ export class GameUI {
   handleGameState(data) {
     console.log('Game state received:', data);
 
+    // Clear any pending submit loading state - GameState is the acknowledgement
+    this.setSubmitLoading(false);
+
     this.currentGrid = data.grid;
     this.gameId = data.game_id;
     this.renderGrid(data.grid);
@@ -505,6 +508,8 @@ export class GameUI {
 
   handleGameOver(data) {
     console.log('Game over:', data);
+    // Clear any pending submit loading state
+    this.setSubmitLoading(false);
     this.renderFinalResults(data);
   }
 
