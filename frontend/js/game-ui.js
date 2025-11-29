@@ -3,6 +3,8 @@ export class GameUI {
     this.gameClient = gameClient;
     this.selectedTiles = [];
     this.currentGrid = null;
+    this.gameId = null;
+    this.currentPlayerId = null;
     this.setupListeners();
   }
 
@@ -55,26 +57,38 @@ export class GameUI {
     document.getElementById('max-rounds').textContent = data.max_rounds;
   }
 
+  /**
+   * Initialize the game UI with data from the server
+   * @param {Object} data - Game initialization data
+   * @param {string} data.gameId - Unique identifier for the game
+   * @param {Array} data.grid - The 5x5 letter grid
+   * @param {Array} data.players - List of players in the game
+   * @param {string} data.currentPlayerId - ID of the player who goes first
+   * @param {number} data.totalRounds - Total number of rounds
+   */
   initializeGame(data) {
     console.log('Initializing game:', data);
-    
+
+    this.gameId = data.gameId;
+    this.currentPlayerId = data.currentPlayerId;
+
     // Hide lobby, show game screen
     document.getElementById('lobby-screen').classList.remove('active');
     document.getElementById('game-screen').classList.add('active');
 
     this.currentGrid = data.grid;
     this.renderGrid(data.grid);
-    
+
     // Map GamePlayerInfo to format expected by renderPlayers (needs score)
     const playersWithScore = data.players.map(p => ({
       ...p,
       score: 0 // Initial score
     }));
     this.renderPlayers(playersWithScore);
-    
+
     document.getElementById('current-round').textContent = 'Round 1';
     document.getElementById('max-rounds').textContent = data.totalRounds;
-    
+
     // Reset other UI elements
     document.getElementById('used-words-list').innerHTML = '';
     document.getElementById('current-word').textContent = '';
