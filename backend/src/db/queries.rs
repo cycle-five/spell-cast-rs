@@ -10,6 +10,9 @@ use crate::{
     },
 };
 
+const DEFAULT_TIMER_DURATION: i32 = 30_i32; // seconds
+const DEFAULT_TIMER_DISABLED: bool = false;
+
 // User queries
 pub async fn get_user(pool: &PgPool, user_id: i64, encryption_key: &str) -> Result<Option<User>> {
     let mut user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
@@ -271,12 +274,12 @@ pub async fn create_game_session(
     .bind(guild_id)
     .bind(channel_id)
     .bind(GameMode::Multiplayer) // Default game mode
-    .bind("waiting") // Initial state
+    .bind(GameStatus::WaitingToStart.to_string()) // Initial state
     .bind(1_i32) // Start at round 1
     .bind(total_rounds as i32)
     .bind(created_by) // Creator is first turn player
-    .bind(false) // Timer disabled by default
-    .bind(30_i32) // Default timer duration
+    .bind(DEFAULT_TIMER_DISABLED) // Timer disabled by default
+    .bind(DEFAULT_TIMER_DURATION) // Default timer duration
     .execute(pool)
     .await?;
 
