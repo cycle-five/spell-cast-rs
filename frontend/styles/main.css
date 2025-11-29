@@ -372,6 +372,26 @@ button {
   transform: translateY(-2px);
 }
 
+.control-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.control-button.loading {
+  position: relative;
+  color: transparent;
+}
+
+.control-button.loading::after {
+  content: 'Submitting...';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-primary);
+}
+
 .used-words {
   background: var(--surface);
   padding: 1rem;

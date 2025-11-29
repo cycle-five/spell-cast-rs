@@ -12,6 +12,7 @@
   max-width: 500px;
   max-height: 500px;
   aspect-ratio: 1;
+  position: relative;
 }
 
 .tile {
@@ -112,6 +113,44 @@
     opacity: 1;
     transform: scale(1.5);
   }
+}
+
+/* Shake animation for invalid tile selection */
+.tile.shake {
+  animation: shake 0.4s ease-in-out;
+  border-color: var(--danger-color) !important;
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-4px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(4px);
+  }
+}
+
+/* SVG Path overlay for connecting selected tiles */
+.selection-path-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.selection-path-line {
+  stroke: var(--primary-color);
+  stroke-width: 4;
+  stroke-linecap: round;
+  fill: none;
+  opacity: 0.8;
+  filter: drop-shadow(0 2px 4px rgba(88, 101, 242, 0.4));
 }
 
 /* Responsive adjustments */

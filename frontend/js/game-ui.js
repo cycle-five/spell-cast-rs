@@ -133,6 +133,12 @@ export class GameUI {
     const boardElement = document.getElementById('game-board');
     boardElement.innerHTML = '';
 
+    // Create SVG overlay for selection path lines
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'selection-path-svg';
+    svg.classList.add('selection-path-svg');
+    boardElement.appendChild(svg);
+
     grid.forEach((row, rowIdx) => {
       row.forEach((cell, colIdx) => {
         const tile = this.createTile(cell, rowIdx, colIdx);
@@ -197,7 +203,7 @@ export class GameUI {
     if (this.selectedTiles.length > 0) {
       const lastTile = this.selectedTiles[this.selectedTiles.length - 1];
       if (!this.isAdjacent(lastTile, position)) {
-        console.log('Tile not adjacent');
+        this.shakeInvalidTile(tileElement);
         return;
       }
     }
@@ -214,6 +220,14 @@ export class GameUI {
     return rowDiff <= 1 && colDiff <= 1 && (rowDiff + colDiff > 0);
   }
 
+  shakeInvalidTile(tileElement) {
+    tileElement.classList.add('shake');
+    // Remove shake class after animation completes
+    setTimeout(() => {
+      tileElement.classList.remove('shake');
+    }, 400);
+  }
+
   updateWordDisplay() {
     const word = this.selectedTiles
       .map(pos => this.currentGrid[pos.row][pos.col].letter)
@@ -224,6 +238,50 @@ export class GameUI {
     // Calculate estimated score
     const score = this.calculateScore();
     document.getElementById('word-score').textContent = `${score} pts`;
+
+    // Update SVG path lines
+    this.updateSelectionPath();
+  }
+
+  updateSelectionPath() {
+    const svg = document.getElementById('selection-path-svg');
+    if (!svg) return;
+
+    // Clear existing paths
+    svg.innerHTML = '';
+
+    if (this.selectedTiles.length < 2) return;
+
+    const boardElement = document.getElementById('game-board');
+    const boardRect = boardElement.getBoundingClientRect();
+
+    // Draw lines between consecutive selected tiles
+    for (let i = 0; i < this.selectedTiles.length - 1; i++) {
+      const from = this.selectedTiles[i];
+      const to = this.selectedTiles[i + 1];
+
+      const fromTile = boardElement.querySelector(`[data-row="${from.row}"][data-col="${from.col}"]`);
+      const toTile = boardElement.querySelector(`[data-row="${to.row}"][data-col="${to.col}"]`);
+
+      if (!fromTile || !toTile) continue;
+
+      const fromRect = fromTile.getBoundingClientRect();
+      const toRect = toTile.getBoundingClientRect();
+
+      // Calculate center points relative to the board
+      const x1 = fromRect.left - boardRect.left + fromRect.width / 2;
+      const y1 = fromRect.top - boardRect.top + fromRect.height / 2;
+      const x2 = toRect.left - boardRect.left + toRect.width / 2;
+      const y2 = toRect.top - boardRect.top + toRect.height / 2;
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x1);
+      line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2);
+      line.setAttribute('y2', y2);
+      line.classList.add('selection-path-line');
+      svg.appendChild(line);
+    }
   }
 
   calculateScore() {
@@ -266,11 +324,36 @@ export class GameUI {
       return;
     }
 
+    // Validate minimum word length (3 characters required)
+    if (this.selectedTiles.length < 3) {
+      this.showError('Word must be at least 3 letters');
+      return;
+    }
+
     const word = this.selectedTiles
       .map(pos => this.currentGrid[pos.row][pos.col].letter)
       .join('');
 
+    // Show loading state
+    this.setSubmitLoading(true);
+
     this.gameClient.submitWord(word, this.selectedTiles);
+  }
+
+  setSubmitLoading(isLoading) {
+    const submitBtn = document.getElementById('submit-btn');
+    if (submitBtn) {
+      if (isLoading) {
+        submitBtn.disabled = true;
+        submitBtn.dataset.originalText = submitBtn.textContent;
+        submitBtn.textContent = 'Submitting...';
+        submitBtn.classList.add('loading');
+      } else {
+        submitBtn.disabled = false;
+        submitBtn.textContent = submitBtn.dataset.originalText || 'Submit';
+        submitBtn.classList.remove('loading');
+      }
+    }
   }
 
   renderPlayers(players) {
@@ -294,13 +377,14 @@ export class GameUI {
 
   handleWordScored(data) {
     console.log('Word scored:', data);
+    this.setSubmitLoading(false);
     this.clearSelection();
     // TODO: Add animation for scored word
   }
 
   handleInvalidWord(data) {
     console.log('Invalid word:', data.reason);
-    // TODO: Show error message
+    this.setSubmitLoading(false);
     this.showError(data.reason);
   }
 
