@@ -226,14 +226,20 @@ button {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
   background-color: rgba(0, 0, 0, 0.7);
-  display: flex;
+  display: flex !important;
   justify-content: center;
   align-items: center;
-  z-index: 2000;
+  z-index: 9999;
   backdrop-filter: blur(2px);
+}
+
+.modal.hidden {
+  display: none !important;
 }
 
 .modal-content {
@@ -490,4 +496,105 @@ button {
   font-family: monospace;
   letter-spacing: 0.3rem;
   box-shadow: 0 4px 12px var(--shadow);
+}
+
+/* Admin Panel */
+.admin-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.admin-toggle-btn:hover {
+  color: var(--text-primary);
+}
+
+.admin-panel {
+  margin-top: 10px;
+  background: var(--surface);
+  padding: 10px;
+  border-radius: var(--radius);
+}
+
+.admin-panel h3 {
+  margin-bottom: 10px;
+}
+
+.admin-panel .refresh-btn {
+  padding: 5px 10px;
+  font-size: 0.8rem;
+}
+
+.admin-games-list {
+  margin-top: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.admin-games-list .empty-message {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.admin-game-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.admin-game-item:last-child {
+  border-bottom: none;
+}
+
+.admin-game-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.admin-delete-btn {
+  background: var(--danger-color);
+  color: white;
+  border: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.admin-delete-btn:hover {
+  background: #c03537;
+}
+
+.admin-confirm-btn {
+  background: var(--danger-color);
+  color: white;
+  border: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.admin-confirm-btn:hover {
+  background: #c03537;
+}
+
+.admin-cancel-btn {
+  background: var(--surface-light);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.admin-cancel-btn:hover {
+  background: var(--surface);
 }

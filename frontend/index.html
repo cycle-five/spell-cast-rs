@@ -66,17 +66,14 @@
 
         <!-- Admin Panel Toggle -->
         <div style="margin-top: 20px; text-align: center;">
-          <button id="toggle-admin-btn"
-            style="background: none; border: none; color: #666; cursor: pointer; font-size: 0.8rem;">Debug/Admin</button>
+          <button id="toggle-admin-btn" class="admin-toggle-btn">Debug/Admin</button>
         </div>
 
         <!-- Admin Panel -->
-        <div id="admin-panel" class="hidden"
-          style="margin-top: 10px; background: #333; padding: 10px; border-radius: 8px;">
+        <div id="admin-panel" class="admin-panel hidden">
           <h3>Admin Panel</h3>
-          <button id="refresh-games-btn" class="secondary-button" style="padding: 5px 10px; font-size: 0.8rem;">Refresh
-            Games</button>
-          <div id="admin-games-list" style="margin-top: 10px; max-height: 200px; overflow-y: auto;"></div>
+          <button id="refresh-games-btn" class="secondary-button refresh-btn">Refresh Games</button>
+          <div id="admin-games-list" class="admin-games-list"></div>
         </div>
       </div>
     </div>
@@ -136,18 +133,6 @@
 
     <!-- Error Display -->
     <div id="error-toast" class="error-toast hidden"></div>
-
-    <!-- Confirmation Modal -->
-    <div id="confirmation-modal" class="modal hidden">
-      <div class="modal-content">
-        <h3 id="modal-title">Confirm Action</h3>
-        <p id="modal-message">Are you sure?</p>
-        <div class="modal-actions">
-          <button id="modal-cancel-btn" class="secondary-button">Cancel</button>
-          <button id="modal-confirm-btn" class="primary-button danger">Confirm</button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <script type="module" src="/js/main.js"></script>

@@ -419,6 +419,69 @@ async fn broadcast_to_lobby(state: &AppState, lobby_id: &str, message: ServerMes
     }
 }
 
+/// Send current game state to a player if there's an active game in their lobby
+/// Used when a player joins/rejoins a lobby with an active game
+async fn send_active_game_state_if_exists(
+    state: &AppState,
+    lobby_id: &str,
+    tx: &mpsc::Sender<ServerMessage>,
+) -> anyhow::Result<()> {
+    match db::queries::get_active_game_for_lobby(&state.db, lobby_id).await {
+        Ok(Some(game_state)) => {
+            // Get player user_ids from game_players table for proper mapping
+            let players = db::queries::get_game_players(&state.db, game_state.game_id)
+                .await
+                .unwrap_or_default();
+
+            // Map game players with real user_ids
+            let player_infos: Vec<crate::websocket::messages::PlayerInfo> = game_state
+                .players
+                .iter()
+                .enumerate()
+                .map(|(idx, p)| {
+                    let user_id = players
+                        .get(idx)
+                        .map(|pr| pr.user_id)
+                        .unwrap_or(0);
+                    crate::websocket::messages::PlayerInfo {
+                        user_id,
+                        username: p.username.clone(),
+                        avatar_url: p.avatar_url.clone(),
+                        score: p.score,
+                        team: None,
+                    }
+                })
+                .collect();
+
+            // Get current turn player's user_id
+            let current_turn = players
+                .get(game_state.current_player_index)
+                .map(|pr| pr.user_id);
+
+            tx.send(ServerMessage::GameState {
+                game_id: game_state.game_id.to_string(),
+                mode: crate::models::GameMode::Multiplayer,
+                round: game_state.current_round as i32,
+                max_rounds: game_state.total_rounds as i32,
+                grid: game_state.grid,
+                players: player_infos,
+                current_turn,
+                used_words: game_state.used_words.into_iter().collect(),
+                timer_enabled: false,
+                time_remaining: None,
+            })
+            .await?;
+        }
+        Ok(None) => {
+            tracing::warn!("Lobby has active_game_id but no game found in DB");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch active game state: {}", e);
+        }
+    }
+    Ok(())
+}
+
 /// Handle the StartGame message - validates and starts a new game
 /// Returns Ok(GameStarted message) on success, or Err(GameError message) on failure
 async fn handle_start_game(
@@ -680,41 +743,9 @@ async fn handle_client_message(
                 .await?;
 
                 // If game is active, send game state
-                if let Some(_game_id) = active_game_id {
+                if active_game_id.is_some() {
                     tracing::info!("Player joined lobby with active game, sending game state");
-                    match db::queries::get_active_game_for_lobby(&state.db, &lobby_id).await {
-                        Ok(Some(game_state)) => {
-                            tx.send(ServerMessage::GameState {
-                                game_id: game_state.game_id.to_string(),
-                                mode: crate::models::GameMode::Multiplayer, // TODO: Store mode in GameState
-                                round: game_state.current_round as i32,
-                                max_rounds: game_state.total_rounds as i32,
-                                grid: game_state.grid,
-                                players: game_state
-                                    .players
-                                    .into_iter()
-                                    .map(|p| crate::websocket::messages::PlayerInfo {
-                                        user_id: 0, // TODO: Fix user_id mapping in get_active_game_for_lobby
-                                        username: p.username,
-                                        avatar_url: p.avatar_url,
-                                        score: p.score,
-                                        team: None,
-                                    })
-                                    .collect(),
-                                current_turn: None, // TODO: Map current player index to user ID
-                                used_words: game_state.used_words.into_iter().collect(),
-                                timer_enabled: false,
-                                time_remaining: None,
-                            })
-                            .await?;
-                        }
-                        Ok(None) => {
-                            tracing::warn!("Lobby has active_game_id but no game found in DB");
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to fetch active game state: {}", e);
-                        }
-                    }
+                    send_active_game_state_if_exists(state, &lobby_id, tx).await?;
                 }
             }
         }
@@ -804,41 +835,9 @@ async fn handle_client_message(
                 .await?;
 
                 // If game is active, send game state
-                if let Some(_game_id) = active_game_id {
+                if active_game_id.is_some() {
                     tracing::info!("Player joined lobby with active game, sending game state");
-                    match db::queries::get_active_game_for_lobby(&state.db, &lobby_id).await {
-                        Ok(Some(game_state)) => {
-                            tx.send(ServerMessage::GameState {
-                                game_id: game_state.game_id.to_string(),
-                                mode: crate::models::GameMode::Multiplayer,
-                                round: game_state.current_round as i32,
-                                max_rounds: game_state.total_rounds as i32,
-                                grid: game_state.grid,
-                                players: game_state
-                                    .players
-                                    .into_iter()
-                                    .map(|p| crate::websocket::messages::PlayerInfo {
-                                        user_id: 0, // TODO: Fix user_id mapping
-                                        username: p.username,
-                                        avatar_url: p.avatar_url,
-                                        score: p.score,
-                                        team: None,
-                                    })
-                                    .collect(),
-                                current_turn: None,
-                                used_words: game_state.used_words.into_iter().collect(),
-                                timer_enabled: false,
-                                time_remaining: None,
-                            })
-                            .await?;
-                        }
-                        Ok(None) => {
-                            tracing::warn!("Lobby has active_game_id but no game found in DB");
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to fetch active game state: {}", e);
-                        }
-                    }
+                    send_active_game_state_if_exists(state, &lobby_id, tx).await?;
                 }
             }
         }
@@ -943,7 +942,7 @@ async fn handle_client_message(
                 return Ok(());
             };
 
-            let game_id_str = match active_game_id {
+            let _game_id_str = match active_game_id {
                 Some(id) => id,
                 None => {
                     tx.send(ServerMessage::GameError {
@@ -982,11 +981,6 @@ async fn handle_client_message(
             // For now, we'll skip strict turn validation to get it working,
             // but in production we must check if game_state.players[current_player_index].user_id == user.user_id
 
-            // Validate word
-            // Load dictionary (in a real app, this should be loaded once and shared)
-            // For now, we'll use a simple check or load it here
-            // TODO: Use shared dictionary from AppState
-
             // Check if word is already used
             if game_state.used_words.contains(&word.to_uppercase()) {
                 tx.send(ServerMessage::InvalidWord {
@@ -996,8 +990,8 @@ async fn handle_client_message(
                 return Ok(());
             }
 
-            // Validate path
-            let validator = WordValidator::new(std::collections::HashSet::new()); // Empty dict for now, just path validation
+            // Validate path - use empty HashSet since we only need path validation here
+            let validator = WordValidator::new(std::collections::HashSet::new());
             if !validator.is_valid_path(&game_state.grid, &positions) {
                 tx.send(ServerMessage::InvalidWord {
                     reason: "Invalid path".to_string(),
@@ -1006,19 +1000,25 @@ async fn handle_client_message(
                 return Ok(());
             }
 
-            // Validate word in dictionary
-            // TODO: Actually check dictionary
-            // For now, assume valid if path is valid
+            // Validate word in dictionary using the shared dictionary from AppState
+            if !state.dictionary.contains(&word) {
+                tx.send(ServerMessage::InvalidWord {
+                    reason: "Word not found in dictionary".to_string(),
+                })
+                .await?;
+                return Ok(());
+            }
 
             // Score word
-            let score = Scorer::calculate_score(&game_state.grid, &positions);
+            let word_score = Scorer::calculate_score(&game_state.grid, &positions);
 
             // Update DB
             let game_uuid = game_state.game_id;
 
-            // 1. Update player score
+            // 1. Update player score (adds word_score to existing score)
             if let Err(e) =
-                db::queries::update_player_score(&state.db, game_uuid, user.user_id, score).await
+                db::queries::update_player_score(&state.db, game_uuid, user.user_id, word_score)
+                    .await
             {
                 tracing::error!("Failed to update player score: {}", e);
             }
@@ -1040,7 +1040,7 @@ async fn handle_client_message(
                 user.user_id,
                 game_state.current_round as i32,
                 &word,
-                score,
+                word_score,
                 serde_json::to_value(&positions).unwrap_or_default(),
             )
             .await
@@ -1048,14 +1048,20 @@ async fn handle_client_message(
                 tracing::error!("Failed to record move: {}", e);
             }
 
-            // Broadcast WordScored
+            // Get player's current total score for the broadcast
+            let player_total_score = game_state
+                .players
+                .iter()
+                .find(|p| p.username == user.username)
+                .map(|p| p.score + word_score)
+                .unwrap_or(word_score);
+
+            // Broadcast WordScored with the word score (not total)
             let player_info = crate::websocket::messages::PlayerInfo {
                 user_id: user.user_id,
                 username: user.username.clone(),
                 avatar_url: None, // TODO: Fetch avatar
-                score, // This is just the score for this word, or total? Message def says "score", usually total.
-                // But here we might want to send the *word* score or the *new total*.
-                // Let's send new total.
+                score: player_total_score, // Send new total score for scoreboard update
                 team: None,
             };
 
@@ -1064,7 +1070,7 @@ async fn handle_client_message(
                 &lobby_id,
                 ServerMessage::WordScored {
                     word: word.to_string(),
-                    score,
+                    score: word_score, // Send the word score, not total
                     player: player_info,
                     positions: positions.clone(),
                 },
@@ -1113,7 +1119,7 @@ async fn handle_client_message(
             // Determine next player
             let current_idx = game_state.current_player_index;
             let next_idx = (current_idx + 1) % game_state.players.len();
-            let next_player = &game_state.players[next_idx];
+            let _next_player = &game_state.players[next_idx];
 
             // Update DB
             let game_uuid = game_state.game_id;
@@ -1196,6 +1202,23 @@ async fn handle_client_message(
             };
             drop(context);
 
+            // Authorization: Check if user is the lobby host
+            if let Some(lobby) = state.lobbies.get(&lobby_id) {
+                if !lobby.is_host(user.user_id) {
+                    tx.send(ServerMessage::Error {
+                        message: "Only the lobby host can access admin functions".to_string(),
+                    })
+                    .await?;
+                    return Ok(());
+                }
+            } else {
+                tx.send(ServerMessage::Error {
+                    message: "Lobby not found".to_string(),
+                })
+                .await?;
+                return Ok(());
+            }
+
             // Parse channel ID from lobby ID
             let (channel_id, _) = match db::queries::parse_lobby_id(&lobby_id) {
                 Ok(ids) => ids,
@@ -1251,6 +1274,37 @@ async fn handle_client_message(
                 game_id
             );
 
+            // Get lobby ID and check authorization
+            let context = player_context.lock().await;
+            let lobby_id = match &context.lobby_id {
+                Some(id) => id.clone(),
+                None => {
+                    tx.send(ServerMessage::Error {
+                        message: "Not in a lobby".to_string(),
+                    })
+                    .await?;
+                    return Ok(());
+                }
+            };
+            drop(context);
+
+            // Authorization: Check if user is the lobby host
+            if let Some(lobby) = state.lobbies.get(&lobby_id) {
+                if !lobby.is_host(user.user_id) {
+                    tx.send(ServerMessage::Error {
+                        message: "Only the lobby host can delete games".to_string(),
+                    })
+                    .await?;
+                    return Ok(());
+                }
+            } else {
+                tx.send(ServerMessage::Error {
+                    message: "Lobby not found".to_string(),
+                })
+                .await?;
+                return Ok(());
+            }
+
             let game_uuid = match uuid::Uuid::parse_str(&game_id) {
                 Ok(id) => id,
                 Err(_) => {
@@ -1270,27 +1324,23 @@ async fn handle_client_message(
             {
                 Ok(_) => {
                     // Also clear active_game_id from lobby if it matches
-                    let context = player_context.lock().await;
-                    if let Some(lobby_id) = &context.lobby_id {
-                        if let Some(mut lobby) = state.lobbies.get_mut(lobby_id) {
-                            if let Some(active_id) = &lobby.active_game_id {
-                                if active_id == &game_uuid {
-                                    lobby.active_game_id = None;
-                                    tracing::info!(
-                                        "Cleared active game {} from lobby {}",
-                                        game_id,
-                                        lobby_id
-                                    );
-                                }
+                    if let Some(mut lobby) = state.lobbies.get_mut(&lobby_id) {
+                        if let Some(active_id) = &lobby.active_game_id {
+                            if active_id == &game_uuid {
+                                lobby.active_game_id = None;
+                                tracing::info!(
+                                    "Cleared active game {} from lobby {}",
+                                    game_id,
+                                    lobby_id
+                                );
                             }
                         }
                     }
-                    drop(context);
 
-                    tx.send(ServerMessage::Error {
-                        message: "Game deleted".to_string(),
+                    tx.send(ServerMessage::AdminGameDeleted {
+                        game_id: game_id.clone(),
                     })
-                    .await?; // Using Error as generic toast for now
+                    .await?;
                 }
                 Err(e) => {
                     tracing::error!("Failed to delete game: {}", e);

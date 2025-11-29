@@ -150,6 +150,9 @@ pub enum ServerMessage {
     AdminGamesList {
         games: Vec<AdminGameInfo>,
     },
+    AdminGameDeleted {
+        game_id: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
