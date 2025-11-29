@@ -162,9 +162,20 @@ impl Lobby {
         }
         // Atomically set game_starting from false to true
         // compare_exchange returns Ok if the swap succeeded (value was false)
-        self.game_starting
+        let acquired = self
+            .game_starting
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
+            .is_ok();
+
+        // Double-check active_game_id after acquiring the flag to prevent race condition
+        // where another thread sets active_game_id between our check and the flag acquisition
+        if acquired && self.active_game_id.is_some() {
+            // Another thread set active_game_id, release the flag and return false
+            self.game_starting.store(false, Ordering::SeqCst);
+            return false;
+        }
+
+        acquired
     }
 
     /// Clear the game_starting flag (called on failure or when game_id is set)
