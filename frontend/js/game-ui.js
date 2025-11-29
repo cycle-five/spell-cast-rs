@@ -12,54 +12,89 @@ export class GameUI {
   setupListeners() {
     // Listen for game state updates
     this.gameClient.on('game_state', (data) => {
-      this.handleGameState(data);
+      this.safeHandle(() => this.handleGameState(data), 'game_state');
     });
 
     this.gameClient.on('game_started', (data) => {
-      this.initializeGame({
+      this.safeHandle(() => this.initializeGame({
         gameId: data.game_id,
         grid: data.grid,
         players: data.players,
         currentPlayerId: data.current_player_id,
         totalRounds: data.total_rounds
-      });
+      }), 'game_started');
     });
 
     this.gameClient.on('word_scored', (data) => {
-      this.handleWordScored(data);
+      this.safeHandle(() => this.handleWordScored(data), 'word_scored');
     });
 
     this.gameClient.on('invalid_word', (data) => {
-      this.handleInvalidWord(data);
+      this.safeHandle(() => this.handleInvalidWord(data), 'invalid_word');
     });
 
     this.gameClient.on('turn_update', (data) => {
-      this.handleTurnUpdate(data);
+      this.safeHandle(() => this.handleTurnUpdate(data), 'turn_update');
     });
 
     this.gameClient.on('round_end', (data) => {
-      this.handleRoundEnd(data);
+      this.safeHandle(() => this.handleRoundEnd(data), 'round_end');
     });
 
     this.gameClient.on('game_over', (data) => {
-      this.handleGameOver(data);
+      this.safeHandle(() => this.handleGameOver(data), 'game_over');
     });
 
     this.gameClient.on('grid_update', (data) => {
-      this.handleGridUpdate(data);
+      this.safeHandle(() => this.handleGridUpdate(data), 'grid_update');
     });
+
+    // Listen for errors from the server
+    this.gameClient.on('error', (data) => {
+      console.error('Server error:', data);
+      this.showError(data.message || 'An error occurred');
+    });
+
+    this.gameClient.on('game_error', (data) => {
+      console.error('Game error:', data);
+      this.showError(data.message || 'Game error occurred');
+      this.setSubmitLoading(false);
+    });
+  }
+
+  /**
+   * Safely execute a handler with error catching
+   */
+  safeHandle(handler, eventName) {
+    try {
+      handler();
+    } catch (error) {
+      console.error(`Error handling ${eventName}:`, error);
+      this.showError(`Failed to process ${eventName}`);
+    }
   }
 
   handleGameState(data) {
     console.log('Game state received:', data);
 
     this.currentGrid = data.grid;
+    this.gameId = data.game_id;
     this.renderGrid(data.grid);
     this.renderPlayers(data.players);
     this.renderUsedWords(data.used_words);
 
     document.getElementById('current-round').textContent = `Round ${data.round}`;
     document.getElementById('max-rounds').textContent = data.max_rounds;
+
+    // Update turn indicator if current_turn is provided
+    if (data.current_turn !== undefined && data.current_turn !== null) {
+      this.currentPlayerId = data.current_turn;
+      this.updateTurnIndicator(data.current_turn);
+    }
+
+    // Clear any existing selection since grid may have changed
+    this.selectedTiles = [];
+    this.updateWordDisplay();
   }
 
   /**

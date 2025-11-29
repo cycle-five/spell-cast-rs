@@ -419,6 +419,69 @@ async fn broadcast_to_lobby(state: &AppState, lobby_id: &str, message: ServerMes
     }
 }
 
+/// Build and broadcast the current GameState to all players in a lobby
+/// This consolidates grid, turn, scores, and round info into a single update
+async fn broadcast_game_state(
+    state: &AppState,
+    lobby_id: &str,
+    game_uuid: uuid::Uuid,
+    grid: &Vec<Vec<crate::models::GridCell>>,
+    current_round: usize,
+    total_rounds: usize,
+    current_player_id: i64,
+    used_words: &[String],
+) {
+    // Get player records for scores and info
+    let player_records = db::queries::get_game_players(&state.db, game_uuid)
+        .await
+        .unwrap_or_default();
+
+    // Get lobby players for usernames/avatars
+    let lobby_player_map: std::collections::HashMap<i64, (String, Option<String>)> =
+        if let Some(lobby) = state.lobbies.get(lobby_id) {
+            lobby
+                .players
+                .iter()
+                .map(|p| (p.user_id, (p.username.clone(), p.avatar_url.clone())))
+                .collect()
+        } else {
+            std::collections::HashMap::new()
+        };
+
+    // Build player infos with current scores
+    let player_infos: Vec<crate::websocket::messages::PlayerInfo> = player_records
+        .iter()
+        .map(|pr| {
+            let (username, avatar_url) = lobby_player_map
+                .get(&pr.user_id)
+                .cloned()
+                .unwrap_or_else(|| (format!("Player {}", pr.user_id), None));
+            crate::websocket::messages::PlayerInfo {
+                user_id: pr.user_id,
+                username,
+                avatar_url,
+                score: pr.score,
+                team: pr.team,
+            }
+        })
+        .collect();
+
+    let game_state_msg = ServerMessage::GameState {
+        game_id: game_uuid.to_string(),
+        mode: crate::models::GameMode::Multiplayer,
+        round: current_round as i32,
+        max_rounds: total_rounds as i32,
+        grid: grid.clone(),
+        players: player_infos,
+        current_turn: Some(current_player_id),
+        used_words: used_words.to_vec(),
+        timer_enabled: false,
+        time_remaining: None,
+    };
+
+    broadcast_to_lobby(state, lobby_id, game_state_msg).await;
+}
+
 /// Send current game state to a player if there's an active game in their lobby
 /// Used when a player joins/rejoins a lobby with an active game
 async fn send_active_game_state_if_exists(
@@ -1064,46 +1127,7 @@ async fn handle_client_message(
                 }
             }
 
-            // Get player's current total score for the broadcast
-            let player_total_score = player_records
-                .iter()
-                .find(|p| p.user_id == user.user_id)
-                .map(|p| p.score + word_score)
-                .unwrap_or(word_score);
-
-            // Broadcast WordScored
-            let player_info = crate::websocket::messages::PlayerInfo {
-                user_id: user.user_id,
-                username: user.username.clone(),
-                avatar_url: None,
-                score: player_total_score,
-                team: None,
-            };
-
-            broadcast_to_lobby(
-                state,
-                &lobby_id,
-                ServerMessage::WordScored {
-                    word: word.to_string(),
-                    score: word_score,
-                    player: player_info,
-                    positions: positions.clone(),
-                },
-            )
-            .await;
-
-            // 6. Broadcast GridUpdate with the new grid
-            broadcast_to_lobby(
-                state,
-                &lobby_id,
-                ServerMessage::GridUpdate {
-                    grid: game_state.grid.clone(),
-                    replaced_positions: positions.clone(),
-                },
-            )
-            .await;
-
-            // 7. Advance turn to next player
+            // 6. Advance turn to next player
             let num_players = player_records.len();
             let current_idx = game_state.current_player_index;
             let next_idx = (current_idx + 1) % num_players;
@@ -1116,10 +1140,18 @@ async fn handle_client_message(
                 game_state.current_round
             };
 
+            // Build updated used_words list
+            let mut used_words: Vec<String> = game_state.used_words.iter().cloned().collect();
+            used_words.push(word.to_uppercase());
+
             // Check if game is over
             if new_round > game_state.total_rounds {
-                // Game is finished - find winner
-                let winner_id = player_records
+                // Game is finished - find winner (need to refetch scores after update)
+                let updated_player_records = db::queries::get_game_players(&state.db, game_uuid)
+                    .await
+                    .unwrap_or_default();
+
+                let winner_id = updated_player_records
                     .iter()
                     .max_by_key(|p| p.score)
                     .map(|p| p.user_id);
@@ -1134,20 +1166,30 @@ async fn handle_client_message(
                     lobby.active_game_id = None;
                 }
 
+                // Get lobby players for usernames/avatars
+                let lobby_player_map: std::collections::HashMap<i64, (String, Option<String>)> =
+                    if let Some(lobby) = state.lobbies.get(&lobby_id) {
+                        lobby
+                            .players
+                            .iter()
+                            .map(|p| (p.user_id, (p.username.clone(), p.avatar_url.clone())))
+                            .collect()
+                    } else {
+                        std::collections::HashMap::new()
+                    };
+
                 // Build final scores
-                let final_scores: Vec<crate::websocket::messages::ScoreInfo> = player_records
+                let final_scores: Vec<crate::websocket::messages::ScoreInfo> = updated_player_records
                     .iter()
                     .map(|p| {
-                        // Find username from game_state.players
-                        let username = game_state
-                            .players
-                            .get(p.team.unwrap_or(0) as usize)
-                            .map(|gp| gp.username.clone())
-                            .unwrap_or_else(|| format!("Player {}", p.user_id));
+                        let (username, _) = lobby_player_map
+                            .get(&p.user_id)
+                            .cloned()
+                            .unwrap_or_else(|| (format!("Player {}", p.user_id), None));
                         crate::websocket::messages::ScoreInfo {
                             user_id: p.user_id,
                             username,
-                            score: p.score + if p.user_id == user.user_id { word_score } else { 0 },
+                            score: p.score,
                         }
                     })
                     .collect();
@@ -1182,45 +1224,20 @@ async fn handle_client_message(
                     tracing::error!("Failed to update game round: {}", e);
                 }
 
-                // Broadcast turn update
-                broadcast_to_lobby(
+                // Broadcast single GameState with all updates (grid, turn, scores, round)
+                broadcast_game_state(
                     state,
                     &lobby_id,
-                    ServerMessage::TurnUpdate {
-                        current_player: next_player_id,
-                        time_remaining: None,
-                    },
+                    game_uuid,
+                    &game_state.grid,
+                    new_round as usize,
+                    game_state.total_rounds as usize,
+                    next_player_id,
+                    &used_words,
                 )
                 .await;
 
-                // If we just started a new round, broadcast RoundEnd
-                if round_complete && new_round <= game_state.total_rounds {
-                    let scores: Vec<crate::websocket::messages::ScoreInfo> = player_records
-                        .iter()
-                        .map(|p| {
-                            let username = game_state
-                                .players
-                                .get(p.team.unwrap_or(0) as usize)
-                                .map(|gp| gp.username.clone())
-                                .unwrap_or_else(|| format!("Player {}", p.user_id));
-                            crate::websocket::messages::ScoreInfo {
-                                user_id: p.user_id,
-                                username,
-                                score: p.score + if p.user_id == user.user_id { word_score } else { 0 },
-                            }
-                        })
-                        .collect();
-
-                    broadcast_to_lobby(
-                        state,
-                        &lobby_id,
-                        ServerMessage::RoundEnd {
-                            scores,
-                            next_round: new_round as i32,
-                        },
-                    )
-                    .await;
-
+                if round_complete {
                     tracing::info!(
                         "Game {} round {} complete, starting round {}",
                         game_uuid,
@@ -1304,6 +1321,9 @@ async fn handle_client_message(
                 game_state.current_round
             };
 
+            // Get used words from game state
+            let used_words: Vec<String> = game_state.used_words.iter().cloned().collect();
+
             // Check if game is over
             if new_round > game_state.total_rounds {
                 // Game is finished - find winner
@@ -1322,15 +1342,26 @@ async fn handle_client_message(
                     lobby.active_game_id = None;
                 }
 
+                // Get lobby players for usernames/avatars
+                let lobby_player_map: std::collections::HashMap<i64, (String, Option<String>)> =
+                    if let Some(lobby) = state.lobbies.get(&lobby_id) {
+                        lobby
+                            .players
+                            .iter()
+                            .map(|p| (p.user_id, (p.username.clone(), p.avatar_url.clone())))
+                            .collect()
+                    } else {
+                        std::collections::HashMap::new()
+                    };
+
                 // Build final scores
                 let final_scores: Vec<crate::websocket::messages::ScoreInfo> = player_records
                     .iter()
                     .map(|p| {
-                        let username = game_state
-                            .players
-                            .get(p.team.unwrap_or(0) as usize)
-                            .map(|gp| gp.username.clone())
-                            .unwrap_or_else(|| format!("Player {}", p.user_id));
+                        let (username, _) = lobby_player_map
+                            .get(&p.user_id)
+                            .cloned()
+                            .unwrap_or_else(|| (format!("Player {}", p.user_id), None));
                         crate::websocket::messages::ScoreInfo {
                             user_id: p.user_id,
                             username,
@@ -1369,45 +1400,20 @@ async fn handle_client_message(
                     tracing::error!("Failed to update turn: {}", e);
                 }
 
-                // Broadcast turn update
-                broadcast_to_lobby(
+                // Broadcast single GameState with all updates (turn, scores, round)
+                broadcast_game_state(
                     state,
                     &lobby_id,
-                    ServerMessage::TurnUpdate {
-                        current_player: next_player_id,
-                        time_remaining: None,
-                    },
+                    game_uuid,
+                    &game_state.grid,
+                    new_round as usize,
+                    game_state.total_rounds as usize,
+                    next_player_id,
+                    &used_words,
                 )
                 .await;
 
-                // If we just started a new round, broadcast RoundEnd
-                if round_complete && new_round <= game_state.total_rounds {
-                    let scores: Vec<crate::websocket::messages::ScoreInfo> = player_records
-                        .iter()
-                        .map(|p| {
-                            let username = game_state
-                                .players
-                                .get(p.team.unwrap_or(0) as usize)
-                                .map(|gp| gp.username.clone())
-                                .unwrap_or_else(|| format!("Player {}", p.user_id));
-                            crate::websocket::messages::ScoreInfo {
-                                user_id: p.user_id,
-                                username,
-                                score: p.score,
-                            }
-                        })
-                        .collect();
-
-                    broadcast_to_lobby(
-                        state,
-                        &lobby_id,
-                        ServerMessage::RoundEnd {
-                            scores,
-                            next_round: new_round as i32,
-                        },
-                    )
-                    .await;
-
+                if round_complete {
                     tracing::info!(
                         "Game {} round {} complete (pass turn), starting round {}",
                         game_uuid,
