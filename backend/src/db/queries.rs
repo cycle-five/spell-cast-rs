@@ -296,11 +296,8 @@ pub async fn create_game_session(
 /// # Errors
 /// Returns `sqlx::Error::Protocol` if the lobby_id format is invalid or cannot be parsed
 fn parse_lobby_id(lobby_id: &str) -> Result<(i64, Option<i64>)> {
-    if lobby_id.starts_with("channel:") {
+    if let Some(channel_str) = lobby_id.strip_prefix("channel:") {
         // Channel-based lobby: "channel:123456789"
-        let channel_str = lobby_id.strip_prefix("channel:").ok_or_else(|| {
-            sqlx::Error::Protocol("Invalid channel lobby_id format".to_string())
-        })?;
         let channel = channel_str.parse::<i64>().map_err(|e| {
             sqlx::Error::Protocol(format!(
                 "Failed to parse channel_id '{}': {}",
@@ -308,11 +305,8 @@ fn parse_lobby_id(lobby_id: &str) -> Result<(i64, Option<i64>)> {
             ))
         })?;
         Ok((channel, None)) // Guild ID would need to be passed separately if needed
-    } else if lobby_id.starts_with("custom:") {
+    } else if let Some(code) = lobby_id.strip_prefix("custom:") {
         // Custom lobby: "custom:ABC123" - encode the lobby code
-        let code = lobby_id.strip_prefix("custom:").ok_or_else(|| {
-            sqlx::Error::Protocol("Invalid custom lobby_id format".to_string())
-        })?;
         if code.is_empty() {
             return Err(sqlx::Error::Protocol(
                 "Custom lobby code cannot be empty".to_string(),
