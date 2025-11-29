@@ -1,4 +1,5 @@
 use sqlx::{PgPool, Result};
+use tracing;
 use uuid::Uuid;
 
 use crate::{
@@ -481,14 +482,20 @@ pub async fn get_active_game_for_lobby(pool: &PgPool, lobby_id: &str) -> Result<
 
     // Parse the grid from JSON
     let grid: Vec<Vec<GridCell>> = if let Some(ref b) = board {
-        serde_json::from_value(b.grid.clone()).unwrap_or_default()
+        serde_json::from_value(b.grid.clone()).map_err(|e| {
+            tracing::error!("Failed to deserialize grid for game {}: {}", game.game_id, e);
+            sqlx::Error::Protocol(format!("Invalid grid data: {}", e))
+        })?
     } else {
         Vec::new()
     };
 
     // Parse used words from JSON
     let used_words: std::collections::HashSet<String> = if let Some(ref b) = board {
-        serde_json::from_value(b.used_words.clone())?
+        serde_json::from_value(b.used_words.clone()).map_err(|e| {
+            tracing::error!("Failed to deserialize used_words for game {}: {}", game.game_id, e);
+            sqlx::Error::Protocol(format!("Invalid used_words data: {}", e))
+        })?
     } else {
         std::collections::HashSet::new()
     };
