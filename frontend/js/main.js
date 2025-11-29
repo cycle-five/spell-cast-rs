@@ -30,7 +30,7 @@ class App {
       this.gameClient = new GameClient(wsUrl);
 
       // Initialize UI
-      this.gameUI = new GameUI(this.gameClient);
+      this.gameUI = new GameUI(this.gameClient, discordResult.user.id);
 
       // Set up event listeners
       this.setupEventListeners();
@@ -98,9 +98,25 @@ class App {
       this.gameClient.passTurn();
     });
 
+    // Start game button (host only)
+    document.getElementById('start-game-btn')?.addEventListener('click', () => {
+      console.log('Starting game...');
+      this.gameClient.startGame();
+    });
+
     // Play again
     document.getElementById('play-again-btn')?.addEventListener('click', () => {
       this.showScreen('lobby');
+    });
+
+    // Admin controls
+    document.getElementById('toggle-admin-btn')?.addEventListener('click', () => {
+      const panel = document.getElementById('admin-panel');
+      panel.classList.toggle('hidden');
+    });
+
+    document.getElementById('refresh-games-btn')?.addEventListener('click', () => {
+      this.gameClient.getAdminGames();
     });
 
     // Join lobby when WebSocket connects
@@ -154,10 +170,28 @@ class App {
       this.showError(data.message);
     });
 
-    // Listen for game state changes
-    this.gameClient.on('game_started', () => {
-      this.showScreen('game');
+    this.gameClient.on('game_error', (data) => {
+      console.error('Game error:', data.message);
+      this.showError(data.message);
     });
+
+    // Admin games list
+    this.gameClient.on('admin_games_list', (data) => {
+      this.renderAdminGamesList(data.games);
+    });
+
+    // Admin game deleted confirmation
+    this.gameClient.on('admin_game_deleted', (data) => {
+      console.log('Game deleted:', data.game_id);
+      // Refresh the games list
+      this.gameClient.getAdminGames();
+    });
+
+    // Listen for game state changes
+    // game_started is handled by GameUI, which transitions the screen
+    // this.gameClient.on('game_started', () => {
+    //   this.showScreen('game');
+    // });
 
     this.gameClient.on('game_over', () => {
       this.showScreen('results');
@@ -244,7 +278,81 @@ class App {
       playerCard.appendChild(span);
       container.appendChild(playerCard);
     });
+
+    // Show/hide start game button based on player count and host status
+    // Note: We don't have explicit "is_host" flag in player list yet, 
+    // but usually the first player or the one who created the lobby is host.
+    // For now, let's show it if we have enough players (>= 2).
+    // TODO: Add proper host check when backend provides it in player list or separate message
+    const startBtn = document.getElementById('start-game-btn');
+    if (startBtn) {
+      if (players.length >= 2) {
+        startBtn.classList.remove('hidden');
+      } else {
+        startBtn.classList.add('hidden');
+      }
+    }
   }
+
+  renderAdminGamesList(games) {
+    const list = document.getElementById('admin-games-list');
+    if (!list) return;
+
+    list.innerHTML = '';
+    if (games.length === 0) {
+      list.innerHTML = '<p class="empty-message">No games found.</p>';
+      return;
+    }
+
+    games.forEach(game => {
+      const item = document.createElement('div');
+      item.className = 'admin-game-item';
+
+      const info = document.createElement('span');
+      info.textContent = `${new Date(game.created_at).toLocaleTimeString()} - ${game.state}`;
+
+      const buttonsContainer = document.createElement('div');
+      buttonsContainer.className = 'admin-game-buttons';
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.className = 'admin-delete-btn';
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.textContent = 'Confirm?';
+      confirmBtn.className = 'admin-confirm-btn hidden';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.className = 'admin-cancel-btn hidden';
+
+      deleteBtn.onclick = () => {
+        deleteBtn.classList.add('hidden');
+        confirmBtn.classList.remove('hidden');
+        cancelBtn.classList.remove('hidden');
+      };
+
+      confirmBtn.onclick = () => {
+        this.gameClient.deleteGame(game.game_id);
+        // List will refresh automatically via admin_game_deleted event handler
+      };
+
+      cancelBtn.onclick = () => {
+        deleteBtn.classList.remove('hidden');
+        confirmBtn.classList.add('hidden');
+        cancelBtn.classList.add('hidden');
+      };
+
+      buttonsContainer.appendChild(deleteBtn);
+      buttonsContainer.appendChild(confirmBtn);
+      buttonsContainer.appendChild(cancelBtn);
+
+      item.appendChild(info);
+      item.appendChild(buttonsContainer);
+      list.appendChild(item);
+    });
+  }
+
 }
 
 // Initialize app when DOM is ready

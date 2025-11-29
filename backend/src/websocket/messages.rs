@@ -53,6 +53,11 @@ pub enum ClientMessage {
     },
     PassTurn,
     EnableTimer,
+    // Admin commands
+    AdminGetGames,
+    AdminDeleteGame {
+        game_id: String,
+    },
 }
 
 /// Messages sent from server to client
@@ -141,6 +146,21 @@ pub enum ServerMessage {
     Error {
         message: String,
     },
+    // Admin responses
+    AdminGamesList {
+        games: Vec<AdminGameInfo>,
+    },
+    AdminGameDeleted {
+        game_id: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminGameInfo {
+    pub game_id: String,
+    pub state: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub players: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

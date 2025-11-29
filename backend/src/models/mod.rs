@@ -9,7 +9,6 @@ pub use game::{
     GameDbState,
     GameMode,
     GameMove,
-    GamePersistenceState,
     // Live game state (for WebSocket/in-memory)
     GamePlayer,
     GamePlayerRecord,

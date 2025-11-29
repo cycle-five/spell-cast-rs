@@ -27,7 +27,7 @@
         <p class="subtitle">A word game to play with friends! Or Enemies!</p>
 
         <div class="game-modes">
-          <button class="mode-button" data-mode="multiplayer">
+          <button class="mode-button" data-mode="Multiplayer">
             <h3>New Game</h3>
             <p>Compete with 2-6 players</p>
           </button>
@@ -35,7 +35,7 @@
             <h3>2v2 Mode</h3>
             <p>Team up with a friend</p>
           </button>
-          <button class="mode-button" data-mode="adventure">
+          <button class="mode-button" data-mode="Adventure">
             <h3>Adventure</h3>
             <p>Solo vs AI (50 levels)</p>
           </button>
@@ -47,7 +47,8 @@
             <button id="create-custom-lobby-btn" class="secondary-button">Create Private Lobby</button>
             <span class="or-divider">or</span>
             <div class="join-lobby-form">
-              <input type="text" id="lobby-code-input" placeholder="Enter lobby code" maxlength="6" class="lobby-code-input">
+              <input type="text" id="lobby-code-input" placeholder="Enter lobby code" maxlength="6"
+                class="lobby-code-input">
               <button id="join-custom-lobby-btn" class="secondary-button">Join</button>
             </div>
           </div>
@@ -62,6 +63,18 @@
         </div>
 
         <button id="start-game-btn" class="primary-button hidden">Start Game</button>
+
+        <!-- Admin Panel Toggle -->
+        <div style="margin-top: 20px; text-align: center;">
+          <button id="toggle-admin-btn" class="admin-toggle-btn">Debug/Admin</button>
+        </div>
+
+        <!-- Admin Panel -->
+        <div id="admin-panel" class="admin-panel hidden">
+          <h3>Admin Panel</h3>
+          <button id="refresh-games-btn" class="secondary-button refresh-btn">Refresh Games</button>
+          <div id="admin-games-list" class="admin-games-list"></div>
+        </div>
       </div>
     </div>
 

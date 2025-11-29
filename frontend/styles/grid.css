@@ -25,7 +25,7 @@
   cursor: pointer;
   transition: all 150ms ease;
   user-select: none;
-  min-height: 60px;
+  aspect-ratio: 1;
 }
 
 .tile:hover {
@@ -101,10 +101,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.5;
     transform: scale(1);
   }
+
   50% {
     opacity: 1;
     transform: scale(1.5);
@@ -121,7 +124,7 @@
   }
 
   .tile {
-    min-height: 50px;
+    /* min-height removed */
   }
 
   .tile .letter {

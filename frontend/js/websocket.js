@@ -162,4 +162,18 @@ export class GameClient {
       type: 'enable_timer',
     });
   }
+
+  // Admin actions
+  getAdminGames() {
+    this.send({
+      type: 'admin_get_games',
+    });
+  }
+
+  deleteGame(gameId) {
+    this.send({
+      type: 'admin_delete_game',
+      game_id: gameId,
+    });
+  }
 }
