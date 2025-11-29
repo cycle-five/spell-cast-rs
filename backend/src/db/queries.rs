@@ -274,7 +274,7 @@ pub async fn create_game_session(
     .bind(guild_id)
     .bind(channel_id)
     .bind(GameMode::Multiplayer) // Default game mode
-    .bind(GameStatus::WaitingToStart.to_string()) // Initial state
+    .bind(GameDbState::Waiting.to_string()) // Initial state
     .bind(1_i32) // Start at round 1
     .bind(total_rounds as i32)
     .bind(created_by) // Creator is first turn player
