@@ -1120,18 +1120,23 @@ async fn handle_client_message(
             };
 
             // Fetch games for this channel
-            let games = sqlx::query_as::<_, crate::models::Game>(
+            let games = match sqlx::query_as::<_, crate::models::Game>(
                 "SELECT * FROM games WHERE channel_id = $1 ORDER BY created_at DESC",
             )
             .bind(channel_id)
             .fetch_all(&state.db)
             .await
-            .map_err(|e| {
-                tracing::error!("Failed to fetch games: {}", e);
-                ServerMessage::Error {
-                    message: "Database error".to_string(),
+            {
+                Ok(g) => g,
+                Err(e) => {
+                    tracing::error!("Failed to fetch games: {}", e);
+                    tx.send(ServerMessage::Error {
+                        message: "Database error".to_string(),
+                    })
+                    .await?;
+                    return Ok(());
                 }
-            })?;
+            };
 
             let admin_games = games
                 .into_iter()
