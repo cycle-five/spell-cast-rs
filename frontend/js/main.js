@@ -308,17 +308,52 @@ class App {
       deleteBtn.textContent = 'Delete';
       deleteBtn.style.cssText = 'background: #ED4245; color: white; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;';
       deleteBtn.onclick = () => {
-        if (confirm('Delete this game?')) {
-          this.gameClient.deleteGame(game.game_id);
-          // Refresh list after a short delay
-          setTimeout(() => this.gameClient.getAdminGames(), 500);
-        }
+        this.showConfirmationModal(
+          'Delete Game',
+          'Are you sure you want to delete this game? This cannot be undone.',
+          () => {
+            this.gameClient.deleteGame(game.game_id);
+            // Refresh list after a short delay
+            setTimeout(() => this.gameClient.getAdminGames(), 500);
+          }
+        );
       };
 
       item.appendChild(info);
       item.appendChild(deleteBtn);
       list.appendChild(item);
     });
+  }
+
+  showConfirmationModal(title, message, onConfirm) {
+    const modal = document.getElementById('confirmation-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalMessage = document.getElementById('modal-message');
+    const confirmBtn = document.getElementById('modal-confirm-btn');
+    const cancelBtn = document.getElementById('modal-cancel-btn');
+
+    if (!modal || !modalTitle || !modalMessage || !confirmBtn || !cancelBtn) return;
+
+    modalTitle.textContent = title;
+    modalMessage.textContent = message;
+
+    const closeModal = () => {
+      modal.classList.add('hidden');
+      // Remove event listeners to prevent memory leaks/multiple firings
+      confirmBtn.onclick = null;
+      cancelBtn.onclick = null;
+    };
+
+    confirmBtn.onclick = () => {
+      onConfirm();
+      closeModal();
+    };
+
+    cancelBtn.onclick = () => {
+      closeModal();
+    };
+
+    modal.classList.remove('hidden');
   }
 }
 
