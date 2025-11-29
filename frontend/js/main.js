@@ -160,6 +160,11 @@ class App {
       this.showError(data.message);
     });
 
+    this.gameClient.on('game_error', (data) => {
+      console.error('Game error:', data.message);
+      this.showError(data.message);
+    });
+
     // Listen for game state changes
     // game_started is handled by GameUI, which transitions the screen
     // this.gameClient.on('game_started', () => {
