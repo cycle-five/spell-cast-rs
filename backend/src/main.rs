@@ -10,7 +10,10 @@ mod utils;
 mod websocket;
 
 use std::{
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -91,6 +94,9 @@ pub struct Lobby {
     pub host_id: Option<i64>,
     /// The active game ID if a game is in progress
     pub active_game_id: Option<Uuid>,
+    /// Flag to prevent race conditions when starting a game
+    /// Set atomically when game start begins, cleared on completion or failure
+    pub game_starting: AtomicBool,
     /// When the lobby was created
     pub created_at: Instant,
     /// When the lobby became empty (for cleanup grace period)
@@ -109,6 +115,7 @@ impl Lobby {
             players: DashMap::new(),
             host_id: None,
             active_game_id: None,
+            game_starting: AtomicBool::new(false),
             created_at: Instant::now(),
             empty_since: None,
         }
@@ -126,6 +133,7 @@ impl Lobby {
             players: DashMap::new(),
             host_id: None,
             active_game_id: None,
+            game_starting: AtomicBool::new(false),
             created_at: Instant::now(),
             empty_since: None,
         }
@@ -139,6 +147,29 @@ impl Lobby {
     /// Check if the lobby has an active game in progress
     pub fn has_active_game(&self) -> bool {
         self.active_game_id.is_some()
+    }
+
+    /// Atomically try to start a game.
+    /// Returns true if this caller can proceed with game creation,
+    /// false if a game is already active or another start is in progress.
+    ///
+    /// This prevents race conditions where two simultaneous StartGame requests
+    /// could both pass the has_active_game() check before either sets active_game_id.
+    pub fn try_start_game(&self) -> bool {
+        // If there's already an active game, fail fast
+        if self.active_game_id.is_some() {
+            return false;
+        }
+        // Atomically set game_starting from false to true
+        // compare_exchange returns Ok if the swap succeeded (value was false)
+        self.game_starting
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    }
+
+    /// Clear the game_starting flag (called on failure or when game_id is set)
+    pub fn clear_game_starting(&self) {
+        self.game_starting.store(false, Ordering::SeqCst);
     }
 
     /// Count of actively connected players (excludes disconnected ones in grace period)
@@ -617,6 +648,193 @@ mod tests {
         assert!(
             lobby.empty_since.is_some(),
             "Lobby should have empty_since set when all players are disconnected"
+        );
+    }
+
+    // ==========================================================================
+    // Tests for try_start_game race condition prevention
+    // ==========================================================================
+
+    #[test]
+    fn test_try_start_game_succeeds_when_no_active_game() {
+        // Verify that try_start_game succeeds when there's no active game
+        let lobby = Lobby::new_channel("test_channel".to_string(), None);
+
+        assert!(
+            lobby.try_start_game(),
+            "try_start_game should succeed when no game is active"
+        );
+
+        // Verify the game_starting flag is now set
+        assert!(
+            lobby.game_starting.load(Ordering::SeqCst),
+            "game_starting flag should be set after successful try_start_game"
+        );
+    }
+
+    #[test]
+    fn test_try_start_game_fails_when_game_already_starting() {
+        // Verify that concurrent try_start_game calls are rejected
+        let lobby = Lobby::new_channel("test_channel".to_string(), None);
+
+        // First call succeeds
+        assert!(
+            lobby.try_start_game(),
+            "First try_start_game should succeed"
+        );
+
+        // Second call fails because game_starting is already set
+        assert!(
+            !lobby.try_start_game(),
+            "Second try_start_game should fail - another start is in progress"
+        );
+    }
+
+    #[test]
+    fn test_try_start_game_fails_when_active_game_exists() {
+        // Verify that try_start_game fails when there's an active game
+        let mut lobby = Lobby::new_channel("test_channel".to_string(), None);
+        lobby.active_game_id = Some(Uuid::new_v4());
+
+        assert!(
+            !lobby.try_start_game(),
+            "try_start_game should fail when active game exists"
+        );
+    }
+
+    #[test]
+    fn test_clear_game_starting_resets_flag() {
+        // Verify that clear_game_starting properly resets the flag
+        let lobby = Lobby::new_channel("test_channel".to_string(), None);
+
+        // Set the game_starting flag
+        lobby.try_start_game();
+        assert!(
+            lobby.game_starting.load(Ordering::SeqCst),
+            "game_starting should be set"
+        );
+
+        // Clear it
+        lobby.clear_game_starting();
+        assert!(
+            !lobby.game_starting.load(Ordering::SeqCst),
+            "game_starting should be cleared"
+        );
+
+        // Now try_start_game should succeed again
+        assert!(
+            lobby.try_start_game(),
+            "try_start_game should succeed after clearing the flag"
+        );
+    }
+
+    #[test]
+    fn test_try_start_game_race_condition_prevention() {
+        // Simulate the race condition scenario described in the PR feedback:
+        // Two concurrent start requests should not both succeed
+        use std::sync::atomic::AtomicUsize;
+        use std::thread;
+
+        let lobby = std::sync::Arc::new(Lobby::new_channel("test_channel".to_string(), None));
+        let successful_starts = std::sync::Arc::new(AtomicUsize::new(0));
+
+        let mut handles = vec![];
+
+        // Spawn multiple threads trying to start the game simultaneously
+        for _ in 0..10 {
+            let lobby_clone = lobby.clone();
+            let counter_clone = successful_starts.clone();
+            handles.push(thread::spawn(move || {
+                if lobby_clone.try_start_game() {
+                    counter_clone.fetch_add(1, Ordering::SeqCst);
+                }
+            }));
+        }
+
+        // Wait for all threads to complete
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Only one thread should have succeeded
+        assert_eq!(
+            successful_starts.load(Ordering::SeqCst),
+            1,
+            "Only one concurrent start request should succeed"
+        );
+    }
+
+    #[test]
+    fn test_lobby_is_host_validation() {
+        // Verify that is_host correctly identifies the lobby host
+        let mut lobby = Lobby::new_channel("test_channel".to_string(), None);
+
+        // No host initially
+        assert!(!lobby.is_host(1), "No user should be host initially");
+        assert!(!lobby.is_host(2), "No user should be host initially");
+
+        // Set host
+        lobby.host_id = Some(1);
+
+        assert!(lobby.is_host(1), "User 1 should be the host");
+        assert!(!lobby.is_host(2), "User 2 should not be the host");
+    }
+
+    #[test]
+    fn test_lobby_player_count_validation() {
+        // Verify player count validation scenarios
+        let lobby = Lobby::new_channel("test_channel".to_string(), None);
+
+        // Empty lobby
+        assert_eq!(
+            lobby.connected_player_count(),
+            0,
+            "Empty lobby should have 0 connected players"
+        );
+
+        // Add 1 player
+        let player1 = create_test_player(1, PlayerConnectionState::Connected);
+        lobby.players.insert(1, player1);
+        assert_eq!(
+            lobby.connected_player_count(),
+            1,
+            "Lobby with 1 connected player"
+        );
+
+        // Add more players up to 6
+        for i in 2..=6 {
+            let player = create_test_player(i, PlayerConnectionState::Connected);
+            lobby.players.insert(i, player);
+        }
+        assert_eq!(
+            lobby.connected_player_count(),
+            6,
+            "Lobby should have 6 connected players"
+        );
+
+        // Add a 7th player
+        let player7 = create_test_player(7, PlayerConnectionState::Connected);
+        lobby.players.insert(7, player7);
+        assert_eq!(
+            lobby.connected_player_count(),
+            7,
+            "Lobby should have 7 connected players (exceeds max)"
+        );
+    }
+
+    #[test]
+    fn test_lobby_has_active_game() {
+        // Verify has_active_game correctly detects active games
+        let mut lobby = Lobby::new_channel("test_channel".to_string(), None);
+
+        // No active game initially
+        assert!(!lobby.has_active_game(), "No active game initially");
+
+        // Set active game
+        lobby.active_game_id = Some(Uuid::new_v4());
+        assert!(
+            lobby.has_active_game(),
+            "Should detect active game after setting"
         );
     }
 }

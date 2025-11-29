@@ -28,6 +28,18 @@ pub enum GameDbState {
     Cancelled,
 }
 
+impl std::fmt::Display for GameDbState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Match database schema values: 'waiting', 'active', 'finished', 'cancelled'
+        match self {
+            GameDbState::Waiting => write!(f, "waiting"),
+            GameDbState::Active => write!(f, "active"),
+            GameDbState::Finished => write!(f, "finished"),
+            GameDbState::Cancelled => write!(f, "cancelled"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Game {
     pub game_id: Uuid,
