@@ -724,20 +724,20 @@ mod tests {
     fn test_encode_lobby_code_empty_string() {
         let code = "";
         let encoded = encode_lobby_code_to_i64(code);
-        // Empty string should encode to 1 (due to -value.saturating_sub(1) = -(0-1) = 1)
+        // Empty string: value = 0, then -value.saturating_sub(1) = -(0.saturating_sub(1)) = -(-1) = 1
         assert_eq!(encoded, 1);
     }
 
     #[test]
     fn test_encode_lobby_code_single_char() {
         // Test single character codes
-        // For "0": value = 0, result = -(0 - 1) = 1
+        // For "0": value = 0, result = -(0.saturating_sub(1)) = -(-1) = 1
         assert_eq!(encode_lobby_code_to_i64("0"), 1);
-        // For "1": value = 1, result = -(1 - 1) = 0
+        // For "1": value = 1, result = -(1.saturating_sub(1)) = -(0) = 0
         assert_eq!(encode_lobby_code_to_i64("1"), 0);
-        // For "A": value = 10, result = -(10 - 1) = -9
+        // For "A": value = 10, result = -(10.saturating_sub(1)) = -(9) = -9
         assert_eq!(encode_lobby_code_to_i64("A"), -9);
-        // For "Z": value = 35, result = -(35 - 1) = -34
+        // For "Z": value = 35, result = -(35.saturating_sub(1)) = -(34) = -34
         assert_eq!(encode_lobby_code_to_i64("Z"), -34);
     }
 
@@ -1099,9 +1099,8 @@ mod tests {
     #[test]
     fn test_encode_lobby_code_max_value() {
         // Test encoding of maximum base-36 value for 6 characters
-        // ZZZZZZ in base 36 = 35 * (36^5 + 36^4 + 36^3 + 36^2 + 36^1 + 36^0)
-        // = 35 * (60466176 + 1679616 + 46656 + 1296 + 36 + 1)
-        // = 35 * 62193781 = 2176782335
+        // ZZZZZZ in base 36 = 35*36^5 + 35*36^4 + 35*36^3 + 35*36^2 + 35*36^1 + 35*36^0
+        // = 35*(60466176 + 1679616 + 46656 + 1296 + 36 + 1) = 35*62193781 = 2176782335
         let code = "ZZZZZZ";
         let encoded = encode_lobby_code_to_i64(code);
         assert!(encoded < 0, "Max code should produce negative value");
@@ -1112,7 +1111,7 @@ mod tests {
     fn test_lobby_id_distinguishes_channel_from_custom() {
         // A custom lobby with code "000000" should NOT collide with channel ID 0
         let custom_encoded = encode_lobby_code_to_i64("000000");
-        // "000000" encodes to 0, then -0.saturating_sub(1) = 1
+        // "000000" encodes to value = 0, then -(0.saturating_sub(1)) = -(-1) = 1
         assert_eq!(custom_encoded, 1);
 
         // So custom lobbies are distinguishable because real Discord channel IDs
