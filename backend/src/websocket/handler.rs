@@ -431,7 +431,11 @@ async fn broadcast_game_state(
     current_player_id: i64,
     used_words: &[String],
 ) {
-    tracing::info!("Preparing to broadcast game state for game {} in lobby {}", game_uuid, lobby_id);    
+    tracing::info!(
+        "Preparing to broadcast game state for game {} in lobby {}",
+        game_uuid,
+        lobby_id
+    );
     // Get player records for scores and info
     let player_records = db::queries::get_game_players(&state.db, game_uuid)
         .await
@@ -507,8 +511,12 @@ async fn send_active_game_state_if_exists(
             // Build player info list from DB records
             let mut player_infos: Vec<crate::websocket::messages::PlayerInfo> = Vec::new();
             for pr in &player_records {
-                if let Ok(Some(user)) =
-                    db::queries::get_user(&state.db, pr.user_id, &state.config.security.encryption_key).await
+                if let Ok(Some(user)) = db::queries::get_user(
+                    &state.db,
+                    pr.user_id,
+                    &state.config.security.encryption_key,
+                )
+                .await
                 {
                     player_infos.push(crate::websocket::messages::PlayerInfo {
                         user_id: pr.user_id.to_string(),
@@ -1156,7 +1164,8 @@ async fn handle_client_message(
             let next_idx = (current_idx + 1) % num_players;
 
             // Check if we've completed a round (wrapped back to first player)
-            let round_complete = next_idx < current_idx || (next_idx == 0 && current_idx == num_players - 1);
+            let round_complete =
+                next_idx < current_idx || (next_idx == 0 && current_idx == num_players - 1);
             let new_round = if round_complete {
                 game_state.current_round + 1
             } else {
@@ -1202,20 +1211,21 @@ async fn handle_client_message(
                     };
 
                 // Build final scores
-                let final_scores: Vec<crate::websocket::messages::ScoreInfo> = updated_player_records
-                    .iter()
-                    .map(|p| {
-                        let (username, _) = lobby_player_map
-                            .get(&p.user_id)
-                            .cloned()
-                            .unwrap_or_else(|| (format!("Player {}", p.user_id), None));
-                        crate::websocket::messages::ScoreInfo {
-                            user_id: p.user_id.to_string(),
-                            username,
-                            score: p.score,
-                        }
-                    })
-                    .collect();
+                let final_scores: Vec<crate::websocket::messages::ScoreInfo> =
+                    updated_player_records
+                        .iter()
+                        .map(|p| {
+                            let (username, _) = lobby_player_map
+                                .get(&p.user_id)
+                                .cloned()
+                                .unwrap_or_else(|| (format!("Player {}", p.user_id), None));
+                            crate::websocket::messages::ScoreInfo {
+                                user_id: p.user_id.to_string(),
+                                username,
+                                score: p.score,
+                            }
+                        })
+                        .collect();
 
                 broadcast_to_lobby(
                     state,
@@ -1230,10 +1240,7 @@ async fn handle_client_message(
                 tracing::info!("Game {} finished, winner: {:?}", game_uuid, winner_id);
             } else {
                 // Game continues - update turn
-                let next_player_id = player_records
-                    .get(next_idx)
-                    .map(|p| p.user_id)
-                    .unwrap_or(0);
+                let next_player_id = player_records.get(next_idx).map(|p| p.user_id).unwrap_or(0);
 
                 // Update DB with new round and current player
                 if let Err(e) = db::queries::update_game_round(
@@ -1335,7 +1342,6 @@ async fn handle_client_message(
             let current_idx = game_state.current_player_index;
             let next_idx = (current_idx + 1) % num_players;
 
-
             // Check if we've completed a round (wrapped back to first player)
             let round_complete =
                 next_idx < current_idx || (next_idx == 0 && current_idx == num_players - 1);
@@ -1404,13 +1410,14 @@ async fn handle_client_message(
                 )
                 .await;
 
-                tracing::info!("Game {} finished (pass turn), winner: {:?}", game_uuid, winner_id);
+                tracing::info!(
+                    "Game {} finished (pass turn), winner: {:?}",
+                    game_uuid,
+                    winner_id
+                );
             } else {
                 // Game continues - update turn
-                let next_player_id = player_records
-                    .get(next_idx)
-                    .map(|p| p.user_id)
-                    .unwrap_or(0);
+                let next_player_id = player_records.get(next_idx).map(|p| p.user_id).unwrap_or(0);
 
                 // Update DB with new round and current player
                 if let Err(e) = db::queries::update_game_round(
@@ -1454,6 +1461,14 @@ async fn handle_client_message(
         }
 
         ClientMessage::AdminGetGames => {
+            if !crate::auth::ADMIN_IDS.contains(&user.user_id) {
+                tx.send(ServerMessage::Error {
+                    message: "Unauthorized: Admin access required".to_string(),
+                })
+                .await?;
+                return Ok(());
+            }
+
             tracing::info!(
                 "User {} ({}) requesting admin games list",
                 user.username,
@@ -1539,6 +1554,14 @@ async fn handle_client_message(
         }
 
         ClientMessage::AdminDeleteGame { game_id } => {
+            if !crate::auth::ADMIN_IDS.contains(&user.user_id) {
+                tx.send(ServerMessage::Error {
+                    message: "Unauthorized: Admin access required".to_string(),
+                })
+                .await?;
+                return Ok(());
+            }
+
             tracing::info!(
                 "User {} ({}) deleting game {}",
                 user.username,

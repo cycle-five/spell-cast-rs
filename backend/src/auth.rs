@@ -9,6 +9,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppState;
 
+pub const ADMIN_IDS: &[i64] = &[
+    285219649921220608, // Replace with actual admin Discord IDs
+    976966669169733672,
+    1124878856491389012,
+];
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: String,      // User ID
